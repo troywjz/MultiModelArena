@@ -1,3 +1,3 @@
-from .html_report import generate_html_report
+from .markdown_report import generate_markdown_report
 
-__all__ = ["generate_html_report"]
+__all__ = ["generate_markdown_report"]

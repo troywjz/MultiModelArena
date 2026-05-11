@@ -5,12 +5,12 @@ import re
 
 
 def is_assessment_prompt(prompt: str) -> bool:
-    return "MODEL_ASSESSMENT_JSON_TASK" in prompt
+    return "请输出 JSON，字段必须包含：" in prompt and "recommended_option" in prompt
 
 
 def build_fake_assessment_response(model_name: str, prompt: str) -> str:
-    task_id = _extract(prompt, "TASK_ID") or "unknown"
-    phase_id = _extract(prompt, "PHASE_ID") or "baseline"
+    task_id = _infer_task_id(prompt)
+    phase_id = _infer_phase_id(prompt)
     option = _recommended_option(task_id, phase_id)
     alternatives = _alternatives(task_id, phase_id)
     if option not in [item["name"] for item in alternatives]:
@@ -40,6 +40,35 @@ def build_fake_assessment_response(model_name: str, prompt: str) -> str:
 def _extract(prompt: str, key: str) -> str:
     match = re.search(rf"^{key}:\s*(.+)$", prompt, re.MULTILINE)
     return match.group(1).strip() if match else ""
+
+
+def _infer_task_id(prompt: str) -> str:
+    if "7 天假期" in prompt and "预算 8000" in prompt:
+        return "life_travel_001"
+    if "后端开发 8 年" in prompt and "AI 产品经理" in prompt:
+        return "career_switch_001"
+    if "多年朋友合伙" in prompt or "朋友经常拖延" in prompt:
+        return "relationship_partner_001"
+    if "投入 5 万元" in prompt and "个人 AI 产品" in prompt:
+        return "resource_project_001"
+    return "unknown"
+
+
+def _infer_phase_id(prompt: str) -> str:
+    phase_markers = {
+        "最重视安静": "prefer_quiet",
+        "同行朋友预算只有 4000": "companion_budget_4000",
+        "房贷压力较大": "mortgage_pressure_high",
+        "每周最多只有 8 小时": "learning_time_limited",
+        "家庭出现问题": "friend_family_issue",
+        "各自投入了一笔钱": "money_already_involved",
+        "安全垫": "savings_low",
+        "20 个目标用户": "market_signal_strong",
+    }
+    for marker, phase_id in phase_markers.items():
+        if marker in prompt:
+            return phase_id
+    return "baseline"
 
 
 def _recommended_option(task_id: str, phase_id: str) -> str:

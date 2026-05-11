@@ -34,6 +34,6 @@ python -m arena report --input runs/latest
 
 后续可增加：
 
-- `python -m arena serve` 启动本地网页服务。
+- `python -m arena assessment-report --input runs/latest` 重新生成 Markdown 报告。
 - Docker 镜像。
 - GitHub Actions 运行单元测试和格式检查。

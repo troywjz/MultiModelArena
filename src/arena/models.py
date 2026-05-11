@@ -32,7 +32,11 @@ class ModelConfig:
     base_url: str = ""
     api_key: str = ""
     role_hint: str = ""
+    temperature: float = 0.2
+    max_tokens: int | None = 1024
+    top_p: float = 1.0
     timeout_seconds: float = 60.0
+    retry_count: int = 0
 
 
 @dataclass(frozen=True)

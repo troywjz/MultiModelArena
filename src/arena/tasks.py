@@ -16,7 +16,7 @@ DEFAULT_TASKS = [
         id="architecture",
         title="工程设计",
         prompt=(
-            "请为一个本地运行的多模型评测和 HTML 报告工具设计模块边界、"
+            "请为一个本地运行的多模型评测和 Markdown 报告工具设计模块边界、"
             "数据流、存储方案和失败降级策略。"
         ),
     ),

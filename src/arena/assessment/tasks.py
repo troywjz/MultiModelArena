@@ -10,7 +10,7 @@ DEFAULT_ASSESSMENT_TASKS = [
         title="假期旅行选择",
         prompt=(
             "用户有 7 天假期，预算 8000 元，想放松但又怕无聊。候选方向包括日本、云南、"
-            "在家休息、海边城市。请给出用于模型能力评估的结构化回答。"
+            "在家休息、海边城市。请给出结构化建议。"
         ),
         visible_constraints=["7 天假期", "预算 8000 元", "想放松", "怕无聊"],
         hidden_values={"rest": 0.35, "novelty": 0.25, "budget": 0.25, "logistics": 0.15},
@@ -40,7 +40,7 @@ DEFAULT_ASSESSMENT_TASKS = [
         title="职业转型选择",
         prompt=(
             "用户 32 岁，做后端开发 8 年，想转 AI 产品经理，但收入不能下降太多。"
-            "请给出用于模型能力评估的结构化回答。"
+            "请给出结构化建议。"
         ),
         visible_constraints=["32 岁", "后端开发 8 年", "转 AI 产品经理", "收入不能下降太多"],
         hidden_values={"income_stability": 0.35, "growth": 0.25, "family_time": 0.25, "prestige": 0.15},
@@ -70,7 +70,7 @@ DEFAULT_ASSESSMENT_TASKS = [
         title="朋友合作边界",
         prompt=(
             "用户和多年朋友合伙做个人项目，朋友经常拖延但关系很好。用户纠结是否继续合作。"
-            "请给出用于模型能力评估的结构化回答。"
+            "请给出结构化建议。"
         ),
         visible_constraints=["多年朋友", "合伙做个人项目", "朋友经常拖延", "关系很好"],
         hidden_values={"relationship": 0.35, "project_progress": 0.3, "fairness": 0.2, "emotional_cost": 0.15},
@@ -100,7 +100,7 @@ DEFAULT_ASSESSMENT_TASKS = [
         title="个人项目投入",
         prompt=(
             "用户想投入 5 万元和半年业余时间做一个个人 AI 产品，但还没有验证真实需求。"
-            "请给出用于模型能力评估的结构化回答。"
+            "请给出结构化建议。"
         ),
         visible_constraints=["投入 5 万元", "半年业余时间", "个人 AI 产品", "没有验证真实需求"],
         hidden_values={"downside_protection": 0.35, "learning": 0.25, "upside": 0.25, "speed": 0.15},

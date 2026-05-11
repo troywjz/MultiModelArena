@@ -9,6 +9,7 @@
 ### 单元测试
 
 - 配置解析。
+- 模型参数解析：model_name、temperature、max_tokens、top_p、timeout_seconds、retry_count。
 - 密钥脱敏。
 - Provider 请求构造和错误归一化。
 - 评分 schema 校验。
@@ -22,14 +23,15 @@
 
 - 使用 fake provider 跑完整评测流程。
 - 模拟单个模型失败，确认整体运行继续。
-- 从保存的运行数据生成 HTML 报告。
+- 从保存的运行数据生成 Markdown 报告。
 - 使用 fake provider 跑 `assessment-run`，确认 4 个领域和扰动评分都进入报告。
 
-### 浏览器检查
+### 报告检查
 
-- 报告页面能打开。
-- 总览、模型卡片、评分表和任务证据存在。
-- 移动端和桌面端没有明显文本重叠。
+- `report.md` 能生成。
+- 报告默认写入根目录 `report-output/`，文件名包含日期、时间和参与模型家族名。
+- 总览、模型画像、评分表、任务定义和原始记录文件链接存在。
+- 报告不包含完整 API Key。
 
 ## 最小命令
 

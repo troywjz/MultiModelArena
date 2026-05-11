@@ -7,9 +7,10 @@ from pathlib import Path
 
 from .config import ConfigError, load_config
 from .assessment.evaluator import AssessmentEvaluator
-from .assessment.report import generate_assessment_html_report
+from .assessment.report import generate_assessment_markdown_report
 from .evaluation import Evaluator
-from .reporting import generate_html_report
+from .report_output import default_report_output_path
+from .reporting import generate_markdown_report
 from .storage import load_summary
 
 
@@ -27,16 +28,16 @@ def main(argv: list[str] | None = None) -> int:
     assessment_run_parser.add_argument("--dry-run", action="store_true", help="只解析配置，不发起模型调用")
     assessment_run_parser.add_argument("--no-dotenv", action="store_true", help="不读取当前目录 .env")
 
-    assessment_report_parser = subparsers.add_parser("assessment-report", help="从模型能力评估结果生成 HTML 报告")
+    assessment_report_parser = subparsers.add_parser("assessment-report", help="从模型能力评估结果生成 Markdown 报告")
     assessment_report_parser.add_argument("--input", default="runs/latest", help="运行结果目录")
-    assessment_report_parser.add_argument("--output", help="HTML 输出路径，默认写入输入目录 report.html")
+    assessment_report_parser.add_argument("--output", help="Markdown 输出路径，默认写入根目录 report-output")
 
-    report_parser = subparsers.add_parser("report", help="从运行结果生成 HTML 报告")
+    report_parser = subparsers.add_parser("report", help="从运行结果生成 Markdown 报告")
     report_parser.add_argument("--input", default="runs/latest", help="运行结果目录")
-    report_parser.add_argument("--output", help="HTML 输出路径，默认写入输入目录 report.html")
+    report_parser.add_argument("--output", help="Markdown 输出路径，默认写入根目录 report-output")
 
-    serve_parser = subparsers.add_parser("serve", help="启动本地静态报告服务")
-    serve_parser.add_argument("--input", default="runs/latest", help="报告目录")
+    serve_parser = subparsers.add_parser("serve", help="启动本地静态文件服务")
+    serve_parser.add_argument("--input", default="report-output", help="静态文件目录")
     serve_parser.add_argument("--port", type=int, default=8000, help="监听端口")
 
     args = parser.parse_args(argv)
@@ -65,34 +66,30 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run(args: argparse.Namespace) -> int:
-    config = load_config(use_dotenv=not args.no_dotenv, dry_run=args.dry_run)
-    if args.provider == "fake":
-        config = _force_fake(config)
+    config = load_config(use_dotenv=not args.no_dotenv, dry_run=args.dry_run, provider_override=args.provider)
     if args.dry_run:
         print(f"配置有效，模型数量：{len(config.models)}")
         for model in config.models:
             print(f"- {model.alias}: {model.provider}/{model.model_name}")
         return 0
     summary = Evaluator(config).run()
-    report_path = generate_html_report(summary.to_dict(), summary.output_dir / "report.html")
-    generate_html_report(load_summary(config.output_root / "latest"), config.output_root / "latest" / "report.html")
+    report_path = default_report_output_path(summary.to_dict())
+    generate_markdown_report(summary.to_dict(), report_path)
     print(f"评测完成：{summary.output_dir}")
     print(f"报告文件：{report_path}")
     return 0
 
 
 def _assessment_run(args: argparse.Namespace) -> int:
-    config = load_config(use_dotenv=not args.no_dotenv, dry_run=args.dry_run)
-    if args.provider == "fake":
-        config = _force_fake(config)
+    config = load_config(use_dotenv=not args.no_dotenv, dry_run=args.dry_run, provider_override=args.provider)
     if args.dry_run:
         print(f"配置有效，模型数量：{len(config.models)}")
         for model in config.models:
             print(f"- {model.alias}: {model.provider}/{model.model_name}")
         return 0
     summary = AssessmentEvaluator(config).run()
-    report_path = generate_assessment_html_report(summary.to_dict(), summary.output_dir / "report.html")
-    generate_assessment_html_report(load_summary(config.output_root / "latest"), config.output_root / "latest" / "report.html")
+    report_path = default_report_output_path(summary.to_dict())
+    generate_assessment_markdown_report(summary.to_dict(), report_path)
     print(f"模型能力评估完成：{summary.output_dir}")
     print(f"报告文件：{report_path}")
     return 0
@@ -113,8 +110,8 @@ def _force_fake(config):
 def _report(args: argparse.Namespace) -> int:
     input_dir = Path(args.input)
     summary = load_summary(input_dir)
-    output_path = Path(args.output) if args.output else input_dir / "report.html"
-    generate_html_report(summary, output_path)
+    output_path = Path(args.output) if args.output else default_report_output_path(summary)
+    generate_markdown_report(summary, output_path)
     print(f"报告文件：{output_path}")
     return 0
 
@@ -122,8 +119,8 @@ def _report(args: argparse.Namespace) -> int:
 def _assessment_report(args: argparse.Namespace) -> int:
     input_dir = Path(args.input)
     summary = load_summary(input_dir)
-    output_path = Path(args.output) if args.output else input_dir / "report.html"
-    generate_assessment_html_report(summary, output_path)
+    output_path = Path(args.output) if args.output else default_report_output_path(summary)
+    generate_assessment_markdown_report(summary, output_path)
     print(f"报告文件：{output_path}")
     return 0
 
@@ -138,6 +135,6 @@ def _serve(args: argparse.Namespace) -> int:
             super().__init__(*handler_args, directory=str(directory), **handler_kwargs)
 
     with socketserver.TCPServer(("127.0.0.1", args.port), Handler) as httpd:
-        print(f"报告服务：http://127.0.0.1:{args.port}/report.html")
+        print(f"文件服务：http://127.0.0.1:{args.port}/")
         httpd.serve_forever()
     return 0

@@ -38,15 +38,14 @@ def build_assessment_messages(
     if previous_response is not None:
         previous_text = json.dumps(previous_response, ensure_ascii=False)
     system = (
-        "你正在参与个人行动领域的模型能力评估。请严格输出一个 JSON 对象，不要输出 Markdown、代码块或额外解释。"
-        "你可以说明不确定性和边界，但必须给出可程序评分的结构化回答。"
+        "你是一个谨慎、务实的中文个人行动建议助手。请严格输出一个 JSON 对象，不要输出 Markdown、代码块或额外解释。"
+        "你可以说明不确定性和边界，但必须给出结构化、可执行的回答。"
     )
     user = f"""
-MODEL_ASSESSMENT_JSON_TASK
-TASK_ID: {task.id}
-PHASE_ID: {phase_label}
-DOMAIN: {task.domain}
-TITLE: {task.title}
+请处理下面的问题，并按指定 JSON 字段回答。
+
+主题：{task.title}
+领域：{task.domain}
 
 用户问题：
 {task.prompt}

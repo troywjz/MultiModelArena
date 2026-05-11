@@ -6,7 +6,7 @@ MultiModelMultiAgentArena 负责三件事：
 
 1. 读取用户配置的多个模型。
 2. 编排一组结构化评估任务、扰动脚本和程序化评分流程。
-3. 保存过程证据并生成网页报告。
+3. 保存过程证据并生成 Markdown 结果报告。
 
 系统不负责托管模型、不保存用户 API Key、不提供在线账号体系。
 
@@ -23,7 +23,7 @@ ARENA_MODELS=deepseek-chat,qwen-max,gpt-4.1-mini
 ARENA_MODEL_DEEPSEEK_CHAT_PROVIDER=openai_compatible
 ARENA_MODEL_DEEPSEEK_CHAT_BASE_URL=https://api.example.com/v1
 ARENA_MODEL_DEEPSEEK_CHAT_API_KEY=...
-ARENA_MODEL_DEEPSEEK_CHAT_NAME=deepseek-chat
+ARENA_MODEL_DEEPSEEK_CHAT_MODEL_NAME=deepseek-chat
 ```
 
 ### Provider 适配层
@@ -53,14 +53,14 @@ ARENA_MODEL_DEEPSEEK_CHAT_NAME=deepseek-chat
 
 ### 报告层
 
-生成本地网页报告。MVP 可以先生成静态 HTML，后续扩展为 FastAPI 交互式报告。
+生成本地 Markdown 结果报告。报告文件默认写入根目录 `report-output/`，命名格式为 `model-arena-YYYYMMDD-HHMMSS-参与模型名称.md`。完整原始数据仍保存在 `runs/` 下的 `events.jsonl` 和 `summary.json`。
 
 报告至少包含：
 
 - 总览排名。
 - 每个模型的领域分、Decision Quality 评分框架结果、行为计数和适合角色。
 - 程序化规则分和失败项。
-- 完整任务级证据。
+- 证据摘录、任务定义和原始记录文件链接，不在 Markdown 中内嵌完整回答。
 - 运行配置摘要，但不展示 API Key。
 
 ### 程序化评分层

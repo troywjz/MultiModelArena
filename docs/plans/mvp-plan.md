@@ -2,7 +2,7 @@
 
 ## 目标
 
-实现一个端到端最小闭环：读取多个模型配置，运行内置评测任务，保存过程数据，生成本地 HTML 可视化报告。
+实现一个端到端最小闭环：读取多个模型配置，运行内置评测任务，保存过程数据，在根目录 `report-output/` 生成本地 Markdown 结果报告。
 
 ## 里程碑 1：项目骨架
 
@@ -25,7 +25,7 @@ python -m arena --help
 - [x] 支持超时和错误归一化。
 - [x] 对日志和错误信息做密钥脱敏。
 - [x] 增加 fake provider 用于离线测试。
-- [ ] 增加重试策略。
+- [x] 增加重试策略。
 
 验收：
 
@@ -49,11 +49,11 @@ python -m pytest tests/test_evaluation*.py
 python -m arena run --provider fake
 ```
 
-## 里程碑 4：HTML 报告
+## 里程碑 4：Markdown 报告
 
-- [x] 生成静态 HTML 报告。
-- [x] 展示总览、模型卡片、维度对比和任务证据。
-- [x] 增加基本图表，使用内联 CSS 和少量原生 JS。
+- [x] 生成 Markdown 报告。
+- [x] 展示总览、模型卡片、维度对比、任务定义和原始记录文件链接。
+- [x] 不在 Markdown 报告中内嵌完整模型回答。
 - [x] 确认报告不包含 API Key。
 - [ ] 增加更明确的局限性区块。
 
@@ -63,9 +63,8 @@ python -m arena run --provider fake
 python -m arena report --input runs/latest
 ```
 
-## 里程碑 5：浏览器验证和文档补齐
+## 里程碑 5：文档补齐和验收验证
 
-- [ ] 增加 Playwright 冒烟测试或手动截图检查。
 - [x] 更新 README 的本地运行步骤。
 - [ ] 补充已知限制和后续路线图。
 

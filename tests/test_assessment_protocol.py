@@ -15,8 +15,10 @@ def test_build_assessment_messages_contains_json_contract():
     messages = build_assessment_messages(task)
 
     assert messages[0]["role"] == "system"
-    assert "MODEL_ASSESSMENT_JSON_TASK" in messages[1]["content"]
-    assert "TASK_ID: life_travel_001" in messages[1]["content"]
+    assert "MODEL_ASSESSMENT_JSON_TASK" not in messages[1]["content"]
+    assert "TASK_ID:" not in messages[1]["content"]
+    assert "PHASE_ID:" not in messages[1]["content"]
+    assert "请处理下面的问题" in messages[1]["content"]
     assert "problem_frame" in messages[1]["content"]
 
 

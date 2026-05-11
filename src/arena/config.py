@@ -27,6 +27,24 @@ def _split_models(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def _parse_float_env(alias: str, field: str, default: float) -> float:
+    raw = os.environ.get(_env_key(alias, field), str(default)).strip()
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise ConfigError(f"{_env_key(alias, field)} 必须是数字") from exc
+
+
+def _parse_int_env(alias: str, field: str, default: int | None) -> int | None:
+    raw = os.environ.get(_env_key(alias, field), "" if default is None else str(default)).strip()
+    if raw == "":
+        return None
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ConfigError(f"{_env_key(alias, field)} 必须是整数") from exc
+
+
 def load_dotenv(path: Path = Path(".env")) -> None:
     if not path.exists():
         return
@@ -40,7 +58,7 @@ def load_dotenv(path: Path = Path(".env")) -> None:
         os.environ.setdefault(key, value)
 
 
-def load_config(*, use_dotenv: bool = True, dry_run: bool = False) -> ArenaConfig:
+def load_config(*, use_dotenv: bool = True, dry_run: bool = False, provider_override: str | None = None) -> ArenaConfig:
     if use_dotenv:
         load_dotenv()
 
@@ -50,16 +68,22 @@ def load_config(*, use_dotenv: bool = True, dry_run: bool = False) -> ArenaConfi
 
     models: list[ModelConfig] = []
     for alias in aliases:
-        provider = os.environ.get(_env_key(alias, "PROVIDER"), "fake").strip()
-        model_name = os.environ.get(_env_key(alias, "NAME"), alias).strip()
+        provider = provider_override or os.environ.get(_env_key(alias, "PROVIDER"), "fake").strip()
+        model_name = (
+            os.environ.get(_env_key(alias, "MODEL_NAME"), "")
+            or os.environ.get(_env_key(alias, "NAME"), "")
+            or alias
+        ).strip()
         base_url = os.environ.get(_env_key(alias, "BASE_URL"), "").strip().rstrip("/")
         api_key = os.environ.get(_env_key(alias, "API_KEY"), "").strip()
         role_hint = os.environ.get(_env_key(alias, "ROLE_HINT"), "").strip()
-        timeout_raw = os.environ.get(_env_key(alias, "TIMEOUT_SECONDS"), "60")
-        try:
-            timeout_seconds = float(timeout_raw)
-        except ValueError as exc:
-            raise ConfigError(f"{_env_key(alias, 'TIMEOUT_SECONDS')} 必须是数字") from exc
+        temperature = _parse_float_env(alias, "TEMPERATURE", 0.2)
+        max_tokens = _parse_int_env(alias, "MAX_TOKENS", 1024)
+        top_p = _parse_float_env(alias, "TOP_P", 1.0)
+        timeout_seconds = _parse_float_env(alias, "TIMEOUT_SECONDS", 60)
+        retry_count = _parse_int_env(alias, "RETRY_COUNT", 0)
+        if retry_count is None:
+            retry_count = 0
 
         if provider == "openai_compatible":
             if not base_url:
@@ -75,7 +99,11 @@ def load_config(*, use_dotenv: bool = True, dry_run: bool = False) -> ArenaConfi
                 base_url=base_url,
                 api_key=api_key,
                 role_hint=role_hint,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                top_p=top_p,
                 timeout_seconds=timeout_seconds,
+                retry_count=retry_count,
             )
         )
 
