@@ -9,3 +9,9 @@ report-output/
 build/
 dist/
 *.egg-info/
+
+# 百度网盘/百度云同步临时文件
+*.baiduyun.uploading.cfg
+*.baiduyun.downloading.cfg
+*.baiduyun.p.downloading
+*.baiduyun.uploading

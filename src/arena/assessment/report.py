@@ -5,6 +5,8 @@ from typing import Any
 
 from arena.security import redact_text
 
+from .models import format_model_display_name
+
 
 def generate_assessment_markdown_report(summary: dict[str, Any], output_path: Path) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -15,7 +17,7 @@ def generate_assessment_markdown_report(summary: dict[str, Any], output_path: Pa
 def _render(summary: dict[str, Any]) -> str:
     results = sorted(summary["results"], key=lambda item: item["total_score"], reverse=True)
     tasks = summary["tasks"]
-    summary_text = _normalize_report_wording(summary.get("summary", "没有可用摘要。"))
+    summary_text = _build_report_summary(results, summary.get("summary", "没有可用摘要。"))
     validity_notice = _validity_notice(results)
     lines: list[str] = [
         "# 模型能力评估报告",
@@ -46,8 +48,9 @@ def _render(summary: dict[str, Any]) -> str:
     for index, result in enumerate(results, start=1):
         roles = _role_names(result, 2)
         failures = "; ".join(result["failures"][:2] + result["errors"][:2]) or "无"
+        model_name = _display_model_name(result)
         lines.append(
-            f"| {index} | {_cell(result['model_name'])} | {_cell(result['provider'])} | {result['total_score']} | {_cell(roles)} | {_cell(failures)} |"
+            f"| {index} | {_cell(model_name)} | {_cell(result['provider'])} | {result['total_score']} | {_cell(roles)} | {_cell(failures)} |"
         )
 
     lines.extend(["", "## 领域评分", ""])
@@ -56,7 +59,7 @@ def _render(summary: dict[str, Any]) -> str:
     lines.append("|---" + "|---:" * len(domains) + "|")
     for result in results:
         values = [str(result["domain_scores"].get(domain, 0)) for domain in domains]
-        lines.append(f"| {_cell(result['model_name'])} | " + " | ".join(values) + " |")
+        lines.append(f"| {_cell(_display_model_name(result))} | " + " | ".join(values) + " |")
 
     lines.extend(["", "## 模型画像", ""])
     for result in results:
@@ -79,6 +82,17 @@ def _render(summary: dict[str, Any]) -> str:
     )
 
     return "\n".join(lines) + "\n"
+
+
+def _build_report_summary(results: list[dict[str, Any]], fallback: str) -> str:
+    if not results:
+        return _normalize_report_wording(fallback)
+    lines = ["本次总评分仅来自程序化规则，不包含模型裁判。"]
+    for result in results:
+        lines.append(
+            f"{_display_model_name(result)}: 总分 {result['total_score']}/10，建议角色 {_role_names(result, 2)}"
+        )
+    return "\n".join(lines)
 
 
 def _normalize_report_wording(text: str) -> str:
@@ -129,11 +143,13 @@ def _role_scores(result: dict[str, Any], limit: int) -> str:
 
 
 def _model_section(result: dict[str, Any]) -> list[str]:
+    display_name = _display_model_name(result)
     lines = [
-        f"### {result['model_name']}",
+        f"### {display_name}",
         "",
         f"- Alias：`{result['alias']}`",
         f"- Provider：`{result['provider']}`",
+        f"- Temperature：{_temperature_text(result)}",
         f"- 总评分：{result['total_score']}/10",
         f"- 推荐角色：{_role_scores(result, limit=3)}",
         "",
@@ -199,6 +215,17 @@ def _inline_scores(scores: dict[str, float], limit: int) -> str:
 
 def _top_items(scores: dict[str, float], count: int) -> list[tuple[str, float]]:
     return sorted(scores.items(), key=lambda item: item[1], reverse=True)[:count]
+
+
+def _display_model_name(result: dict[str, Any]) -> str:
+    return format_model_display_name(result["model_name"], result.get("temperature"), result.get("alias", ""))
+
+
+def _temperature_text(result: dict[str, Any]) -> str:
+    display_name = _display_model_name(result)
+    if display_name == result["model_name"]:
+        return "未设置"
+    return display_name.removeprefix(result["model_name"]).strip("（）").replace("温度 ", "")
 
 
 def _cell(value: str) -> str:

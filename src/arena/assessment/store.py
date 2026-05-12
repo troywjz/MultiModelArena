@@ -30,6 +30,7 @@ class AssessmentRunStore:
                     alias text primary key,
                     model_name text not null,
                     provider text not null,
+                    temperature real,
                     total_score real not null,
                     role_fit text not null,
                     failures text not null,
@@ -86,13 +87,14 @@ class AssessmentRunStore:
                 conn.execute(
                     """
                     insert into assessment_model_results (
-                        alias, model_name, provider, total_score, role_fit, failures, errors
-                    ) values (?, ?, ?, ?, ?, ?, ?)
+                        alias, model_name, provider, temperature, total_score, role_fit, failures, errors
+                    ) values (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         result.alias,
                         result.model_name,
                         result.provider,
+                        result.temperature,
                         result.total_score,
                         json.dumps(result.role_fit, ensure_ascii=False),
                         json.dumps(result.failures, ensure_ascii=False),

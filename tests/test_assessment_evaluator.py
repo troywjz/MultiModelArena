@@ -38,6 +38,8 @@ def test_assessment_report_contains_programmatic_scoring(tmp_path):
 
     assert "# 模型能力评估报告" in markdown
     assert "Assessment Quality" in markdown
+    assert "fake-a（温度 0.2）" in markdown
+    assert "- Temperature：0.2" in markdown
     assert "## 原始记录文件" in markdown
     assert "\\summary.json" not in markdown
     assert "## 完整回答证据" not in markdown
@@ -90,3 +92,47 @@ def test_assessment_report_marks_all_parse_failures_invalid(tmp_path):
     assert "本次总评分仅来自程序化规则" in markdown
     assert "| 1 | bad-json-model | fake | 0.0 | 待定 |" in markdown
     assert "- 推荐角色：待定" in markdown
+
+
+def test_assessment_report_infers_temperature_from_alias_for_old_summaries(tmp_path):
+    data = {
+        "run_id": "old-minimax-run",
+        "created_at": "2026-05-12T00:00:00+00:00",
+        "output_dir": str(tmp_path),
+        "tasks": [
+            {
+                "id": "task_1",
+                "domain": "个人生活",
+                "title": "测试任务",
+                "prompt": "请给出结构化建议。",
+                "visible_constraints": [],
+                "acceptable_options": [],
+                "bad_options": [],
+                "mutations": [],
+            }
+        ],
+        "results": [
+            {
+                "alias": "minimax_t08",
+                "model_name": "MiniMax-M2.7",
+                "provider": "anthropic_compatible",
+                "responses": [{"parsed": {"ok": True}}],
+                "domain_scores": {"个人生活": 8.0},
+                "quality_scores": {},
+                "behavior_fingerprint": {},
+                "role_fit": {"信息审查专家": 10.0},
+                "rule_scores": {},
+                "total_score": 8.0,
+                "evidence": [],
+                "failures": [],
+                "errors": [],
+            }
+        ],
+        "summary": "MiniMax-M2.7: 总分 8.0/10",
+    }
+
+    report_path = generate_assessment_markdown_report(data, tmp_path / "report.md")
+    markdown = report_path.read_text(encoding="utf-8")
+
+    assert "MiniMax-M2.7（温度 0.8）" in markdown
+    assert "- Temperature：0.8" in markdown

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+import re
 from typing import Any
 
 
@@ -106,6 +107,7 @@ class AssessmentModelResult:
     model_name: str
     provider: str
     role_hint: str
+    temperature: float | None = None
     responses: list[AssessmentPhaseResponse] = field(default_factory=list)
     domain_scores: dict[str, float] = field(default_factory=dict)
     quality_scores: dict[str, float] = field(default_factory=dict)
@@ -134,6 +136,7 @@ class AssessmentModelResult:
             "model_name": self.model_name,
             "provider": self.provider,
             "role_hint": self.role_hint,
+            "temperature": self.temperature,
             "responses": [response.to_dict() for response in self.responses],
             "domain_scores": self.domain_scores,
             "quality_scores": self.quality_scores,
@@ -176,5 +179,31 @@ def build_summary(results: list[AssessmentModelResult]) -> str:
     for result in ranked:
         best_roles = sorted(result.role_fit.items(), key=lambda item: item[1], reverse=True)[:2]
         role_text = "、".join(name for name, _score in best_roles) or "待定"
-        lines.append(f"{result.model_name}: 总分 {result.total_score}/10，建议角色 {role_text}")
+        display_name = format_model_display_name(result.model_name, result.temperature, result.alias)
+        lines.append(f"{display_name}: 总分 {result.total_score}/10，建议角色 {role_text}")
     return "\n".join(lines)
+
+
+def format_model_display_name(model_name: str, temperature: Any = None, alias: str = "") -> str:
+    inferred_temperature = _normalize_temperature(temperature)
+    if inferred_temperature is None:
+        inferred_temperature = infer_temperature_from_alias(alias)
+    if inferred_temperature is None:
+        return model_name
+    return f"{model_name}（温度 {inferred_temperature:g}）"
+
+
+def infer_temperature_from_alias(alias: str) -> float | None:
+    match = re.search(r"(?:^|_)t(\d{2})$", alias)
+    if not match:
+        return None
+    return int(match.group(1)) / 10
+
+
+def _normalize_temperature(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

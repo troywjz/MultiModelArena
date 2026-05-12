@@ -120,6 +120,10 @@ ARENA_DISABLE_PROXY=true
 
 `ARENA_DISABLE_PROXY=true` 会让 OpenAI-compatible 请求绕过环境变量和 Windows 系统代理，适合排查本机代理导致的连接中断。也可以对单个模型设置 `ARENA_MODEL_<ALIAS>_DISABLE_PROXY=true` 覆盖全局配置。
 
+Kimi Code 使用 OpenAI-compatible 接口，配置为 `BASE_URL=https://api.kimi.com/coding/v1`、`MODEL_NAME=kimi-for-coding`。当前 `.env` 已填好这些非敏感项，`ARENA_MODEL_KIMI_API_KEY` 留空，需从 Kimi Code 控制台复制后手动填写。
+
+火山方舟豆包 Seed 使用 OpenAI-compatible 接口，配置为 `BASE_URL=https://ark.cn-beijing.volces.com/api/v3`、`MODEL_NAME=doubao-seed-1-6-251015`。当前 `.env` 已填好这些非敏感项，`ARENA_MODEL_SEED_API_KEY` 留空；只有把 `seed` 追加到 `ARENA_MODELS` 后才会实际调用。
+
 `MAX_TOKENS=None` 表示不限制模型输出 token。程序会把它解析为 Python 的 `None`，请求体里不会传输出上限字段，而不是传一个 JSON `null`。空值也兼容同样语义；如果填写整数，程序会按 provider 映射为对应参数。`minimax_t01`、`minimax_t04`、`minimax_t08` 用于同一个 minimax 模型的 0.1、0.4、0.8 三档温度测试，并默认使用 `anthropic_compatible`。使用 `--provider fake` 时会临时覆盖 provider，不需要真实密钥。
 
 ## 模型能力评估主流程

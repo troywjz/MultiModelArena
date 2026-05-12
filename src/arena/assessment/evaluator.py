@@ -31,6 +31,7 @@ class AssessmentEvaluator:
                 model_name=model.model_name,
                 provider=model.provider,
                 role_hint=model.role_hint,
+                temperature=model.temperature,
             )
             provider = providers[model.alias]
             for task in self.tasks:
