@@ -11,39 +11,41 @@ from arena.security import redact_text
 from .base import Provider
 
 
-class OpenAICompatibleProvider(Provider):
+class AnthropicCompatibleProvider(Provider):
     def complete(self, messages: list[dict[str, str]]) -> ProviderResponse:
-        url = f"{self.config.base_url}/chat/completions"
+        url = f"{self.config.base_url}/messages"
+        system_parts = [message["content"] for message in messages if message["role"] == "system"]
+        conversation = [message for message in messages if message["role"] != "system"]
         payload = {
             "model": self.config.model_name,
-            "messages": messages,
+            "messages": conversation,
             "temperature": self.config.temperature,
             "top_p": self.config.top_p,
         }
         if self.config.max_tokens is not None:
-            payload[self._token_limit_field()] = self.config.max_tokens
+            payload["max_tokens"] = self.config.max_tokens
+        if system_parts:
+            payload["system"] = "\n".join(system_parts)
         body = json.dumps(payload).encode("utf-8")
         data = self._post(url, body)
-
-        try:
-            choice = data["choices"][0]
-            text = choice["message"]["content"]
-        except (KeyError, IndexError, TypeError) as exc:
-            raise RuntimeError("模型响应缺少 choices[0].message.content") from exc
+        text = self._text_content(data)
         usage = dict(data.get("usage", {}))
-        finish_reason = choice.get("finish_reason")
-        if finish_reason:
-            usage["finish_reason"] = finish_reason
+        content = data.get("content", [])
+        if isinstance(content, list):
+            block_types = [item.get("type", "") for item in content if isinstance(item, dict)]
+            usage["content_block_types"] = ",".join(item for item in block_types if item) or "none"
+            usage["text_block_count"] = sum(1 for item in content if isinstance(item, dict) and item.get("type") == "text")
+        stop_reason = data.get("stop_reason")
+        if stop_reason:
+            usage["finish_reason"] = stop_reason
         return ProviderResponse(text=text, usage=usage, raw=data)
 
-    def _token_limit_field(self) -> str:
-        configured = self.config.token_limit_field
-        if configured != "auto":
-            return configured
-        provider_marker = f"{self.config.base_url} {self.config.model_name}".lower()
-        if "minimaxi" in provider_marker or "minimax" in provider_marker:
-            return "max_completion_tokens"
-        return "max_tokens"
+    def _text_content(self, data: dict) -> str:
+        content = data.get("content", [])
+        if not isinstance(content, list):
+            raise RuntimeError("模型响应 content 不是列表")
+        texts = [item.get("text", "") for item in content if isinstance(item, dict) and item.get("type") == "text"]
+        return "\n".join(text for text in texts if text)
 
     def _post(self, url: str, body: bytes) -> dict:
         attempts = self.config.retry_count + 1
@@ -54,7 +56,7 @@ class OpenAICompatibleProvider(Provider):
                 data=body,
                 headers={
                     "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self.config.api_key}",
+                    "X-Api-Key": self.config.api_key,
                 },
                 method="POST",
             )
@@ -63,13 +65,11 @@ class OpenAICompatibleProvider(Provider):
                     return json.loads(response.read().decode("utf-8"))
             except urllib.error.HTTPError as exc:
                 last_error = exc
+                error_body = exc.read().decode("utf-8", errors="replace")
+                safe_error = redact_text(error_body, [self.config.api_key])
                 if exc.code < 500 and exc.code != 429:
-                    error_body = exc.read().decode("utf-8", errors="replace")
-                    safe_error = redact_text(error_body, [self.config.api_key])
                     raise RuntimeError(f"模型调用失败 HTTP {exc.code}: {safe_error}") from exc
                 if attempt == attempts - 1:
-                    error_body = exc.read().decode("utf-8", errors="replace")
-                    safe_error = redact_text(error_body, [self.config.api_key])
                     raise RuntimeError(f"模型调用失败 HTTP {exc.code}: {safe_error}") from exc
             except urllib.error.URLError as exc:
                 last_error = exc

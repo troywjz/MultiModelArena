@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import sqlite3
+import time
 from pathlib import Path
 from typing import Any
 
@@ -50,8 +51,19 @@ class AssessmentRunStore:
     def record_event(self, event_type: str, payload: dict[str, Any]) -> None:
         event = {"type": event_type, "payload": payload}
         safe = json.loads(redact_text(json.dumps(event, ensure_ascii=False), self.known_secrets))
-        with self.events_path.open("a", encoding="utf-8") as file:
-            file.write(json.dumps(safe, ensure_ascii=False) + "\n")
+        self._append_event_line(json.dumps(safe, ensure_ascii=False) + "\n")
+
+    def _append_event_line(self, line: str) -> None:
+        # Windows 上偶发的杀毒/索引扫描可能短暂占用文件；这里重试避免丢掉整次评估。
+        for attempt in range(5):
+            try:
+                with self.events_path.open("a", encoding="utf-8") as file:
+                    file.write(line)
+                return
+            except PermissionError:
+                if attempt == 4:
+                    raise
+                time.sleep(0.2 * (attempt + 1))
 
     def write_summary(self, summary: AssessmentRunSummary) -> None:
         data = summary.to_dict()

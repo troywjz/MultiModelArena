@@ -3,12 +3,12 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "multimodel-multiagent-arena"
+name = "multimodel-arena"
 version = "0.1.0"
 description = "多模型多轮评测与 Markdown 报告工具"
 readme = "README.md"
 requires-python = ">=3.11"
-authors = [{ name = "MultiModelMultiAgentArena contributors" }]
+authors = [{ name = "MultiModelArena contributors" }]
 dependencies = []
 
 [project.optional-dependencies]

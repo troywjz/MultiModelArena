@@ -5,7 +5,7 @@ import re
 
 
 def is_assessment_prompt(prompt: str) -> bool:
-    return "请输出 JSON，字段必须包含：" in prompt and "recommended_option" in prompt
+    return ("请输出 JSON，字段必须包含：" in prompt or "输出JSON字段:" in prompt) and "recommended_option" in prompt
 
 
 def build_fake_assessment_response(model_name: str, prompt: str) -> str:

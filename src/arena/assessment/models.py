@@ -172,7 +172,7 @@ def build_summary(results: list[AssessmentModelResult]) -> str:
     if not results:
         return "没有可用评估结果。"
     ranked = sorted(results, key=lambda result: result.total_score, reverse=True)
-    lines = ["本次主分仅来自程序化规则，不包含模型裁判。"]
+    lines = ["本次总评分仅来自程序化规则，不包含模型裁判。"]
     for result in ranked:
         best_roles = sorted(result.role_fit.items(), key=lambda item: item[1], reverse=True)[:2]
         role_text = "、".join(name for name, _score in best_roles) or "待定"

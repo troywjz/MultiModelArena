@@ -43,3 +43,50 @@ def test_assessment_report_contains_programmatic_scoring(tmp_path):
     assert "## 完整回答证据" not in markdown
     assert "```json" not in markdown
     assert "sk-test-secret-value" not in markdown
+
+
+def test_assessment_report_marks_all_parse_failures_invalid(tmp_path):
+    data = {
+        "run_id": "invalid-json-run",
+        "created_at": "2026-05-12T00:00:00+00:00",
+        "output_dir": str(tmp_path),
+        "tasks": [
+            {
+                "id": "task_1",
+                "domain": "个人生活",
+                "title": "测试任务",
+                "prompt": "请给出结构化建议。",
+                "visible_constraints": [],
+                "acceptable_options": [],
+                "bad_options": [],
+                "mutations": [],
+            }
+        ],
+        "results": [
+            {
+                "alias": "bad_json",
+                "model_name": "bad-json-model",
+                "provider": "fake",
+                "responses": [{"parsed": None, "parse_error": "Expecting value"}],
+                "domain_scores": {},
+                "quality_scores": {},
+                "behavior_fingerprint": {},
+                "role_fit": {"通用主持专家": 0.0},
+                "rule_scores": {"json_complete": 0.0},
+                "total_score": 0.0,
+                "evidence": [],
+                "failures": ["task_1/baseline: JSON 解析失败"],
+                "errors": [],
+            }
+        ],
+        "summary": "本次主分仅来自程序化规则，不包含模型裁判。",
+    }
+
+    report_path = generate_assessment_markdown_report(data, tmp_path / "report.md")
+    markdown = report_path.read_text(encoding="utf-8")
+
+    assert "## 有效性提示" in markdown
+    assert "没有任何可解析的 JSON 响应" in markdown
+    assert "本次总评分仅来自程序化规则" in markdown
+    assert "| 1 | bad-json-model | fake | 0.0 | 待定 |" in markdown
+    assert "- 推荐角色：待定" in markdown

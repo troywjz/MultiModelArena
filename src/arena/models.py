@@ -33,10 +33,12 @@ class ModelConfig:
     api_key: str = ""
     role_hint: str = ""
     temperature: float = 0.2
-    max_tokens: int | None = 1024
+    max_tokens: int | None = None
+    token_limit_field: str = "auto"
     top_p: float = 1.0
     timeout_seconds: float = 60.0
     retry_count: int = 0
+    disable_proxy: bool = False
 
 
 @dataclass(frozen=True)

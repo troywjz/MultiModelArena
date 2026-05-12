@@ -36,37 +36,33 @@ def build_assessment_messages(
         mutation_text = f"{mutation.kind}: {mutation.prompt}"
     previous_text = "无"
     if previous_response is not None:
-        previous_text = json.dumps(previous_response, ensure_ascii=False)
+        previous_text = _previous_response_summary(previous_response)
     system = (
-        "你是一个谨慎、务实的中文个人行动建议助手。请严格输出一个 JSON 对象，不要输出 Markdown、代码块或额外解释。"
-        "你可以说明不确定性和边界，但必须给出结构化、可执行的回答。"
+        "只输出紧凑JSON对象，必须以{开头以}结尾。禁止Markdown、解释、分析过程、<think>。"
+        "总字数尽量500字以内，短语尽量12字内。"
     )
-    user = f"""
-请处理下面的问题，并按指定 JSON 字段回答。
-
-主题：{task.title}
-领域：{task.domain}
-
-用户问题：
-{task.prompt}
-
-本轮新增信息：
-{mutation_text}
-
-上一轮答案摘要：
-{previous_text}
-
-请输出 JSON，字段必须包含：
-{", ".join(REQUIRED_OUTPUT_FIELDS)}
-
-字段要求：
-- alternatives 至少 3 个，每个包含 name、type、pros、cons、reversibility。
-- option_ranking 从最推荐到最不推荐排序。
-- confidence 为 0 到 1 的数字。
-- next_actions_7_days、next_actions_30_days、revisit_conditions 都必须是列表。
-- 如果涉及健康、法律、投资或高风险现实行动，professional_boundary 必须说明需要人类或专业人士确认。
-""".strip()
+    user = (
+        f"题:{task.title};域:{task.domain};问题:{task.prompt};新增:{mutation_text};上轮:{previous_text}。"
+        f"输出JSON字段:{','.join(REQUIRED_OUTPUT_FIELDS)}。"
+        "约束:alternatives恰好3项,每项含name,type,pros,cons,reversibility,pros/cons各1短句;"
+        "assumptions,clarifying_questions,values_detected,risks,next_actions_7_days,next_actions_30_days,"
+        "revisit_conditions各最多2项;option_ranking恰好3个名称;confidence为0到1;"
+        "professional_boundary一句,无专业风险写个人判断即可。"
+    )
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+
+def _previous_response_summary(previous_response: dict[str, Any]) -> str:
+    summary = {
+        "recommended_option": previous_response.get("recommended_option", ""),
+        "option_ranking": previous_response.get("option_ranking", [])[:3]
+        if isinstance(previous_response.get("option_ranking"), list)
+        else previous_response.get("option_ranking", ""),
+        "risks": previous_response.get("risks", [])[:2]
+        if isinstance(previous_response.get("risks"), list)
+        else previous_response.get("risks", ""),
+    }
+    return json.dumps(summary, ensure_ascii=False, separators=(",", ":"))
 
 
 def parse_json_response(text: str) -> tuple[dict[str, Any] | None, str]:

@@ -18,8 +18,9 @@ def test_build_assessment_messages_contains_json_contract():
     assert "MODEL_ASSESSMENT_JSON_TASK" not in messages[1]["content"]
     assert "TASK_ID:" not in messages[1]["content"]
     assert "PHASE_ID:" not in messages[1]["content"]
-    assert "请处理下面的问题" in messages[1]["content"]
+    assert "输出JSON字段" in messages[1]["content"]
     assert "problem_frame" in messages[1]["content"]
+    assert "500字以内" in messages[0]["content"]
 
 
 def test_parse_json_response_accepts_code_fence():

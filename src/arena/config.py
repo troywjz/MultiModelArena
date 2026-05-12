@@ -37,12 +37,38 @@ def _parse_float_env(alias: str, field: str, default: float) -> float:
 
 def _parse_int_env(alias: str, field: str, default: int | None) -> int | None:
     raw = os.environ.get(_env_key(alias, field), "" if default is None else str(default)).strip()
-    if raw == "":
+    if raw.lower() in {"", "none", "null"}:
         return None
     try:
         return int(raw)
     except ValueError as exc:
         raise ConfigError(f"{_env_key(alias, field)} 必须是整数") from exc
+
+
+def _parse_token_limit_field(alias: str) -> str:
+    value = os.environ.get(_env_key(alias, "TOKEN_LIMIT_FIELD"), "auto").strip() or "auto"
+    allowed = {"auto", "max_tokens", "max_completion_tokens"}
+    if value not in allowed:
+        raise ConfigError(f"{_env_key(alias, 'TOKEN_LIMIT_FIELD')} 必须是 auto、max_tokens 或 max_completion_tokens")
+    return value
+
+
+def _parse_bool_value(name: str, value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off", ""}:
+        return False
+    raise ConfigError(f"{name} 必须是 true/false、1/0、yes/no 或 on/off")
+
+
+def _parse_bool_env(alias: str, field: str, default: bool, *, global_field: str | None = None) -> bool:
+    env_name = _env_key(alias, field)
+    if env_name in os.environ:
+        return _parse_bool_value(env_name, os.environ[env_name])
+    if global_field and global_field in os.environ:
+        return _parse_bool_value(global_field, os.environ[global_field])
+    return default
 
 
 def load_dotenv(path: Path = Path(".env")) -> None:
@@ -78,14 +104,16 @@ def load_config(*, use_dotenv: bool = True, dry_run: bool = False, provider_over
         api_key = os.environ.get(_env_key(alias, "API_KEY"), "").strip()
         role_hint = os.environ.get(_env_key(alias, "ROLE_HINT"), "").strip()
         temperature = _parse_float_env(alias, "TEMPERATURE", 0.2)
-        max_tokens = _parse_int_env(alias, "MAX_TOKENS", 1024)
+        max_tokens = _parse_int_env(alias, "MAX_TOKENS", None)
+        token_limit_field = _parse_token_limit_field(alias)
         top_p = _parse_float_env(alias, "TOP_P", 1.0)
         timeout_seconds = _parse_float_env(alias, "TIMEOUT_SECONDS", 60)
         retry_count = _parse_int_env(alias, "RETRY_COUNT", 0)
+        disable_proxy = _parse_bool_env(alias, "DISABLE_PROXY", False, global_field="ARENA_DISABLE_PROXY")
         if retry_count is None:
             retry_count = 0
 
-        if provider == "openai_compatible":
+        if provider in {"openai_compatible", "anthropic_compatible"}:
             if not base_url:
                 raise ConfigError(f"{alias} 缺少 {_env_key(alias, 'BASE_URL')}")
             if not api_key:
@@ -101,9 +129,11 @@ def load_config(*, use_dotenv: bool = True, dry_run: bool = False, provider_over
                 role_hint=role_hint,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                token_limit_field=token_limit_field,
                 top_p=top_p,
                 timeout_seconds=timeout_seconds,
                 retry_count=retry_count,
+                disable_proxy=disable_proxy,
             )
         )
 

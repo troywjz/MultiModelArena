@@ -2,7 +2,7 @@
 
 ## 系统边界
 
-MultiModelMultiAgentArena 负责三件事：
+MultiModelArena 负责三件事：
 
 1. 读取用户配置的多个模型。
 2. 编排一组结构化评估任务、扰动脚本和程序化评分流程。
@@ -65,7 +65,7 @@ ARENA_MODEL_DEEPSEEK_CHAT_MODEL_NAME=deepseek-chat
 
 ### 程序化评分层
 
-主分只来自可复现规则，不使用模型裁判。第一版规则包括：
+总评分只来自可复现规则，不使用模型裁判。第一版规则包括：
 
 - JSON 字段完整性。
 - 备选方案数量。
@@ -74,7 +74,7 @@ ARENA_MODEL_DEEPSEEK_CHAT_MODEL_NAME=deepseek-chat
 - 扰动响应。
 - 7 天 / 30 天行动计划和复盘条件。
 
-模型裁判只能作为旁路功能，用于报告摘要或标记可疑样本，不能进入主分。
+模型裁判只能作为旁路功能，用于报告摘要或标记可疑样本，不能计入总评分。
 
 ## 评分维度
 
