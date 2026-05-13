@@ -63,6 +63,30 @@ def test_load_config_treats_none_max_tokens_as_unset(monkeypatch):
     assert config.models[0].max_tokens is None
 
 
+def test_load_config_treats_none_top_p_as_unset(monkeypatch):
+    monkeypatch.setenv("ARENA_MODELS", "deepseek_chat")
+    monkeypatch.setenv("ARENA_MODEL_DEEPSEEK_CHAT_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("ARENA_MODEL_DEEPSEEK_CHAT_BASE_URL", "https://api.example.test/v1")
+    monkeypatch.setenv("ARENA_MODEL_DEEPSEEK_CHAT_API_KEY", "sk-test-secret")
+    monkeypatch.setenv("ARENA_MODEL_DEEPSEEK_CHAT_TOP_P", "None")
+
+    config = load_config(use_dotenv=False)
+
+    assert config.models[0].top_p is None
+
+
+def test_load_config_defaults_top_p_to_unset(monkeypatch):
+    monkeypatch.setenv("ARENA_MODELS", "deepseek_chat")
+    monkeypatch.setenv("ARENA_MODEL_DEEPSEEK_CHAT_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("ARENA_MODEL_DEEPSEEK_CHAT_BASE_URL", "https://api.example.test/v1")
+    monkeypatch.setenv("ARENA_MODEL_DEEPSEEK_CHAT_API_KEY", "sk-test-secret")
+    monkeypatch.delenv("ARENA_MODEL_DEEPSEEK_CHAT_TOP_P", raising=False)
+
+    config = load_config(use_dotenv=False)
+
+    assert config.models[0].top_p is None
+
+
 def test_load_config_model_disable_proxy_overrides_global(monkeypatch):
     monkeypatch.setenv("ARENA_MODELS", "deepseek_chat")
     monkeypatch.setenv("ARENA_MODEL_DEEPSEEK_CHAT_PROVIDER", "openai_compatible")

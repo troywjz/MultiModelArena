@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from .diagnostics import analyze_response
+from .diagnostics import DIAGNOSTIC_DIMENSIONS, analyze_response
 from .models import QUALITY_DIMENSIONS, ROLE_FIT_RULES, AssessmentModelResult, AssessmentTask
 from .protocol import REQUIRED_OUTPUT_FIELDS
 
@@ -37,7 +37,22 @@ def score_assessment_result(result: AssessmentModelResult, tasks: list[Assessmen
         parsed = response.parsed
         if parsed is None:
             result.failures.append(f"{response.task_id}/{response.phase_id}: JSON 解析失败: {response.parse_error}")
-            rule_hits["json_complete"].append(0)
+            for rule_name in [
+                "json_complete",
+                "alternative_count",
+                "bad_option_avoidance",
+                "professional_boundary",
+                "action_plan",
+                "acceptable_option_match",
+            ]:
+                rule_hits[rule_name].append(0)
+            if response.phase_id != "baseline":
+                rule_hits["mutation_response"].append(0)
+            domain_hits[task.domain].append(0)
+            for name in QUALITY_DIMENSIONS:
+                dq_hits[name].append(0)
+            for name in DIAGNOSTIC_DIMENSIONS:
+                diagnostic_hits[name].append(0)
             continue
         behavior["json_valid_count"] += 1
         if response.phase_id == "baseline":

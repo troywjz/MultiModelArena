@@ -39,6 +39,8 @@ def build_assessment_messages(
         previous_text = _previous_response_summary(previous_response)
     system = (
         "只输出紧凑JSON对象，必须以{开头以}结尾。禁止Markdown、解释、分析过程、<think>。"
+        "必须是严格JSON：所有字段名和字符串都用英文双引号，禁止{problem_frame:...}这类JS对象写法，"
+        "禁止尾逗号，数组用[]且对象用{}正确闭合。"
         "总字数尽量700字以内，短语尽量16字内；在字段内容里体现依据、权衡、风险和下一步。"
     )
     user = (

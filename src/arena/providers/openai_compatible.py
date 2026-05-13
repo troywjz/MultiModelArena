@@ -18,8 +18,9 @@ class OpenAICompatibleProvider(Provider):
             "model": self.config.model_name,
             "messages": messages,
             "temperature": self.config.temperature,
-            "top_p": self.config.top_p,
         }
+        if self.config.top_p is not None:
+            payload["top_p"] = self.config.top_p
         if self.config.max_tokens is not None:
             payload[self._token_limit_field()] = self.config.max_tokens
         body = json.dumps(payload).encode("utf-8")

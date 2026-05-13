@@ -126,13 +126,14 @@ class AssessmentModelResult:
         score_groups = [
             self.domain_scores,
             self.quality_scores,
+            self.rule_scores,
             self.diagnostic_scores,
             self.role_fit,
         ]
-        values = [value for group in score_groups for value in group.values()]
-        if not values:
+        group_scores = [_average(list(group.values())) for group in score_groups if group]
+        if not group_scores:
             return 0.0
-        return round(sum(values) / len(values), 2)
+        return round(sum(group_scores) / len(group_scores), 2)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -214,3 +215,9 @@ def _normalize_temperature(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _average(values: list[float]) -> float:
+    if not values:
+        return 0.0
+    return sum(values) / len(values)

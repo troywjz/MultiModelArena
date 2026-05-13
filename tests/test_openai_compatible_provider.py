@@ -134,3 +134,27 @@ def test_openai_compatible_provider_omits_token_limit_when_unset(monkeypatch):
 
     assert "max_tokens" not in captured["payload"]
     assert "max_completion_tokens" not in captured["payload"]
+
+
+def test_openai_compatible_provider_omits_top_p_when_unset(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_urlopen(request, timeout):
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        return FakeHTTPResponse({"choices": [{"message": {"content": "{}"}, "finish_reason": "stop"}]})
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    provider = OpenAICompatibleProvider(
+        ModelConfig(
+            alias="deepseek",
+            provider="openai_compatible",
+            model_name="deepseek-chat",
+            base_url="https://api.example.test/v1",
+            api_key="sk-test-secret",
+            top_p=None,
+        )
+    )
+
+    provider.complete([{"role": "user", "content": "hi"}])
+
+    assert "top_p" not in captured["payload"]

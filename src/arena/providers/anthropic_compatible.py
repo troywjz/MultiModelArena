@@ -20,8 +20,9 @@ class AnthropicCompatibleProvider(Provider):
             "model": self.config.model_name,
             "messages": conversation,
             "temperature": self.config.temperature,
-            "top_p": self.config.top_p,
         }
+        if self.config.top_p is not None:
+            payload["top_p"] = self.config.top_p
         if self.config.max_tokens is not None:
             payload["max_tokens"] = self.config.max_tokens
         if system_parts:

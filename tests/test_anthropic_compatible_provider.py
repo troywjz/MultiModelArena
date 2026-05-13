@@ -124,3 +124,33 @@ def test_anthropic_compatible_provider_omits_max_tokens_when_unset(monkeypatch):
     provider.complete([{"role": "user", "content": "user prompt"}])
 
     assert "max_tokens" not in captured["payload"]
+
+
+def test_anthropic_compatible_provider_omits_top_p_when_unset(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_urlopen(request, timeout):
+        captured["payload"] = json.loads(request.data.decode("utf-8"))
+        return FakeHTTPResponse(
+            {
+                "content": [{"type": "text", "text": '{"recommended_option":"A"}'}],
+                "usage": {"input_tokens": 10, "output_tokens": 20},
+                "stop_reason": "end_turn",
+            }
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    provider = AnthropicCompatibleProvider(
+        ModelConfig(
+            alias="minimax_t01",
+            provider="anthropic_compatible",
+            model_name="MiniMax-M2.7",
+            base_url="https://api.minimaxi.com/anthropic/v1",
+            api_key="sk-test-secret",
+            top_p=None,
+        )
+    )
+
+    provider.complete([{"role": "user", "content": "user prompt"}])
+
+    assert "top_p" not in captured["payload"]

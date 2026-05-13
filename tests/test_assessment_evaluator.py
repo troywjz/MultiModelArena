@@ -107,13 +107,13 @@ def test_assessment_report_contains_programmatic_scoring(tmp_path):
     markdown = report_path.read_text(encoding="utf-8")
 
     assert "# 模型能力评估报告" in markdown
-    assert "Assessment Quality" in markdown
+    assert "过程质量（Assessment Quality）" in markdown
     assert "#### 响应拆解评估" in markdown
     assert "约束锚定" in markdown
     assert "#### 方法与分析角度指纹" in markdown
     assert "#### 拆解证据" in markdown
     assert "fake-a（温度 0.2）" in markdown
-    assert "- Temperature：0.2" in markdown
+    assert "- 温度（Temperature）：0.2" in markdown
     assert "## 原始记录文件" in markdown
     assert "\\summary.json" not in markdown
     assert "## 完整回答证据" not in markdown
@@ -164,7 +164,7 @@ def test_assessment_report_marks_all_parse_failures_invalid(tmp_path):
     assert "## 有效性提示" in markdown
     assert "没有任何可解析的 JSON 响应" in markdown
     assert "本次总评分仅来自程序化规则" in markdown
-    assert "| 1 | bad-json-model | fake | 0.0 | 待定 |" in markdown
+    assert "| 1 | bad-json-model | 离线模拟（fake） | 0.0 | 待定 |" in markdown
     assert "- 推荐角色：待定" in markdown
 
 
@@ -209,7 +209,7 @@ def test_assessment_report_infers_temperature_from_alias_for_old_summaries(tmp_p
     markdown = report_path.read_text(encoding="utf-8")
 
     assert "MiniMax-M2.7（温度 0.8）" in markdown
-    assert "- Temperature：0.8" in markdown
+    assert "- 温度（Temperature）：0.8" in markdown
 
 
 def _single_phase_task() -> AssessmentTask:

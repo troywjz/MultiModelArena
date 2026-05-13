@@ -35,6 +35,16 @@ def _parse_float_env(alias: str, field: str, default: float) -> float:
         raise ConfigError(f"{_env_key(alias, field)} 必须是数字") from exc
 
 
+def _parse_optional_float_env(alias: str, field: str, default: float | None) -> float | None:
+    raw = os.environ.get(_env_key(alias, field), "" if default is None else str(default)).strip()
+    if raw.lower() in {"", "none", "null"}:
+        return None
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise ConfigError(f"{_env_key(alias, field)} 必须是数字、None 或留空") from exc
+
+
 def _parse_int_env(alias: str, field: str, default: int | None) -> int | None:
     raw = os.environ.get(_env_key(alias, field), "" if default is None else str(default)).strip()
     if raw.lower() in {"", "none", "null"}:
@@ -106,7 +116,7 @@ def load_config(*, use_dotenv: bool = True, dry_run: bool = False, provider_over
         temperature = _parse_float_env(alias, "TEMPERATURE", 0.2)
         max_tokens = _parse_int_env(alias, "MAX_TOKENS", None)
         token_limit_field = _parse_token_limit_field(alias)
-        top_p = _parse_float_env(alias, "TOP_P", 1.0)
+        top_p = _parse_optional_float_env(alias, "TOP_P", None)
         timeout_seconds = _parse_float_env(alias, "TIMEOUT_SECONDS", 60)
         retry_count = _parse_int_env(alias, "RETRY_COUNT", 0)
         disable_proxy = _parse_bool_env(alias, "DISABLE_PROXY", False, global_field="ARENA_DISABLE_PROXY")

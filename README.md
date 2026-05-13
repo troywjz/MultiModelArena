@@ -136,7 +136,7 @@ ARENA_MODEL_<ALIAS>_ROLE_HINT=
 ARENA_MODEL_<ALIAS>_TEMPERATURE=0.2
 ARENA_MODEL_<ALIAS>_MAX_TOKENS=None
 ARENA_MODEL_<ALIAS>_TOKEN_LIMIT_FIELD=auto
-ARENA_MODEL_<ALIAS>_TOP_P=1.0
+ARENA_MODEL_<ALIAS>_TOP_P=None
 ARENA_MODEL_<ALIAS>_TIMEOUT_SECONDS=60
 ARENA_MODEL_<ALIAS>_RETRY_COUNT=0
 ARENA_MODEL_<ALIAS>_DISABLE_PROXY=false
@@ -148,7 +148,7 @@ ARENA_MODEL_<ALIAS>_DISABLE_PROXY=false
 
 `ARENA_DISABLE_PROXY=true` 会让 OpenAI-compatible 请求绕过环境变量和 Windows 系统代理，适合排查本机代理导致的连接中断。也可以对单个模型设置 `ARENA_MODEL_<ALIAS>_DISABLE_PROXY=true` 覆盖全局配置。
 
-Kimi 使用 OpenAI-compatible 接口，当前模板配置为 `BASE_URL=https://api.moonshot.cn/v1`、`MODEL_NAME=kimi-k2.6`。Kimi K2.6 这类模型只接受固定采样参数，当前本地配置使用 `TEMPERATURE=1.0`、`TOP_P=0.95`。当前 `.env.example` 已同步这些非敏感项，`ARENA_MODEL_KIMI_API_KEY` 留空。
+Kimi 使用 OpenAI-compatible 接口，当前模板配置为 `BASE_URL=https://api.moonshot.cn/v1`、`MODEL_NAME=kimi-k2.6`。Kimi K2.6 这类模型只接受固定温度，当前本地配置使用 `TEMPERATURE=1.0`。`TOP_P=None` 表示请求体里不传 `top_p`，由供应商使用默认值。当前 `.env.example` 已同步这些非敏感项，`ARENA_MODEL_KIMI_API_KEY` 留空。
 
 火山方舟豆包 Seed 使用 OpenAI-compatible 接口，当前模板配置为 `BASE_URL=https://ark.cn-beijing.volces.com/api/v3`、`MODEL_NAME=doubao-seed-2-0-lite-260428`。当前 `.env.example` 已同步这些非敏感项，`ARENA_MODEL_SEED_API_KEY` 留空；只有把 `seed` 追加到 `ARENA_MODELS` 后才会实际调用。
 
@@ -158,7 +158,7 @@ Kimi 使用 OpenAI-compatible 接口，当前模板配置为 `BASE_URL=https://a
 
 小米 MiMo 使用 OpenAI-compatible 接口，配置为 `BASE_URL=https://api.xiaomimimo.com/v1`、默认 `MODEL_NAME=mimo-v2.5-pro`。MiMo 的 OpenAI 兼容示例使用 `max_completion_tokens`，因此模板设置 `TOKEN_LIMIT_FIELD=max_completion_tokens`。
 
-`MAX_TOKENS=None` 表示不限制模型输出 token。程序会把它解析为 Python 的 `None`，请求体里不会传输出上限字段，而不是传一个 JSON `null`。空值也兼容同样语义；如果填写整数，程序会按 provider 映射为对应参数。`minimax_t01`、`minimax_t04`、`minimax_t08` 用于同一个 minimax 模型的 0.1、0.4、0.8 三档温度测试，并默认使用 `anthropic_compatible`。使用 `--provider fake` 时会临时覆盖 provider，不需要真实密钥。
+`MAX_TOKENS=None` 表示不限制模型输出 token。程序会把它解析为 Python 的 `None`，请求体里不会传输出上限字段，而不是传一个 JSON `null`。`TOP_P=None` 同理表示不传 `top_p`，使用模型服务默认值。空值也兼容同样语义；如果填写整数或小数，程序会按 provider 映射为对应参数。`minimax_t01`、`minimax_t04`、`minimax_t08` 用于同一个 minimax 模型的 0.1、0.4、0.8 三档温度测试，并默认使用 `anthropic_compatible`。使用 `--provider fake` 时会临时覆盖 provider，不需要真实密钥。
 
 ## 模型能力评估主流程
 
@@ -204,8 +204,11 @@ python -m arena assessment-report --input runs/latest
 ## 文档地图
 
 - [产品需求](docs/product/requirements.md)
-- [架构说明](ARCHITECTURE.md)
-- [工作流](WORKFLOW.md)
+- [架构说明](docs/architecture/architecture.md)
+- [工作流](docs/operations/workflow.md)
+- [Agent 项目指令](docs/agents/AGENTS.md)
+- [项目规划](docs/plans/项目规划.md)
+- [评分规则说明](docs/quality/scoring.md)
 - [测试策略](docs/quality/test-strategy.md)
 - [MVP 计划](docs/plans/mvp-plan.md)
 
@@ -329,7 +332,7 @@ ARENA_MODEL_<ALIAS>_ROLE_HINT=
 ARENA_MODEL_<ALIAS>_TEMPERATURE=0.2
 ARENA_MODEL_<ALIAS>_MAX_TOKENS=None
 ARENA_MODEL_<ALIAS>_TOKEN_LIMIT_FIELD=auto
-ARENA_MODEL_<ALIAS>_TOP_P=1.0
+ARENA_MODEL_<ALIAS>_TOP_P=None
 ARENA_MODEL_<ALIAS>_TIMEOUT_SECONDS=60
 ARENA_MODEL_<ALIAS>_RETRY_COUNT=0
 ARENA_MODEL_<ALIAS>_DISABLE_PROXY=false
@@ -337,11 +340,11 @@ ARENA_MODEL_<ALIAS>_DISABLE_PROXY=false
 
 Only aliases listed in `ARENA_MODELS` are called. Other configured blocks in `.env` are ignored until their aliases are added to `ARENA_MODELS`. `MODEL_NAME` is the provider-side model name. The legacy `NAME` field remains supported but is not recommended.
 
-`TOKEN_LIMIT_FIELD` can be `auto`, `max_tokens`, or `max_completion_tokens`. `MAX_TOKENS=None` or a blank value means no output-token limit is sent in the request body.
+`TOKEN_LIMIT_FIELD` can be `auto`, `max_tokens`, or `max_completion_tokens`. `MAX_TOKENS=None` or a blank value means no output-token limit is sent in the request body. `TOP_P=None` has the same meaning for `top_p`: the request omits it and lets the provider use its default.
 
 `ARENA_DISABLE_PROXY=true` disables system and environment proxies for model requests. It can be overridden per model with `ARENA_MODEL_<ALIAS>_DISABLE_PROXY=true`.
 
-Kimi uses the OpenAI-compatible API. The current template uses `BASE_URL=https://api.moonshot.cn/v1` and `MODEL_NAME=kimi-k2.6`. For Kimi K2.6-style models that only allow fixed sampling parameters, set `TEMPERATURE` and `TOP_P` to provider-allowed values; the local template uses `TEMPERATURE=1.0` and `TOP_P=0.95`.
+Kimi uses the OpenAI-compatible API. The current template uses `BASE_URL=https://api.moonshot.cn/v1` and `MODEL_NAME=kimi-k2.6`. For Kimi K2.6-style models that only allow fixed temperature, set `TEMPERATURE` to the provider-allowed value; the local template uses `TEMPERATURE=1.0` and `TOP_P=None`.
 
 Volcengine Ark Doubao Seed uses the OpenAI-compatible API with `BASE_URL=https://ark.cn-beijing.volces.com/api/v3` and `MODEL_NAME=doubao-seed-2-0-lite-260428`.
 
@@ -394,7 +397,10 @@ python -m arena assessment-report --input runs/latest
 ## Document Map
 
 - [Product Requirements](docs/product/requirements.md)
-- [Architecture](ARCHITECTURE.md)
-- [Workflow](WORKFLOW.md)
+- [Architecture](docs/architecture/architecture.md)
+- [Workflow](docs/operations/workflow.md)
+- [Agent Instructions](docs/agents/AGENTS.md)
+- [Project Plan](docs/plans/项目规划.md)
+- [Scoring Rules](docs/quality/scoring.md)
 - [Test Strategy](docs/quality/test-strategy.md)
 - [MVP Plan](docs/plans/mvp-plan.md)
