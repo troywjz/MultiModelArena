@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .config import ConfigError, load_config
 from .assessment.evaluator import AssessmentEvaluator
-from .assessment.protocol import REQUIRED_OUTPUT_FIELDS, build_assessment_messages, parse_json_response
+from .assessment.protocol import build_assessment_messages
 from .assessment.report import generate_assessment_markdown_report
 from .assessment.tasks import DEFAULT_ASSESSMENT_TASKS
 from .evaluation import Evaluator
@@ -137,7 +137,6 @@ def _probe_model(args: argparse.Namespace) -> int:
 def _probe_one_model(model, prompt: str | None, *, show_response: bool) -> None:
     provider = build_provider(model)
     if prompt:
-        probe_mode = "自定义连通性提示词"
         messages = [
             {
                 "role": "system",
@@ -146,60 +145,20 @@ def _probe_one_model(model, prompt: str | None, *, show_response: bool) -> None:
             {"role": "user", "content": prompt},
         ]
     else:
-        probe_mode = "正式评测 JSON 协议"
         messages = build_assessment_messages(DEFAULT_ASSESSMENT_TASKS[0])
+
+    response = provider.complete(messages)
 
     print("模型探针测试")
     print(f"- Alias：{model.alias}")
     print(f"- Provider：{model.provider}")
     print(f"- Model：{model.model_name}")
-    print(f"- Temperature：{model.temperature}")
-    print(f"- Max tokens：{model.max_tokens}")
-    print(f"- Token limit field：{model.token_limit_field}")
-    print(f"- Disable proxy：{model.disable_proxy}")
-    print(f"- 模式：{probe_mode}")
-    if prompt:
-        print(f"- Prompt：{prompt}")
-    else:
-        print(f"- 任务：{DEFAULT_ASSESSMENT_TASKS[0].id} / {DEFAULT_ASSESSMENT_TASKS[0].title}")
-    print("")
+    print("- 调用结果：成功")
 
-    response = provider.complete(messages)
-
-    print("调用元数据")
-    if response.usage:
-        for key, value in response.usage.items():
-            print(f"- {key}: {value}")
-    else:
-        print("- 无")
-    print("- 响应原文：已隐藏（需要查看时添加 --show-response）")
-    for item in _truncation_diagnostics(model, response.usage):
-        print(f"- {item}")
     if show_response:
         print("")
         print("原始响应")
         print(response.text)
-    print("")
-
-    parsed, parse_error = parse_json_response(response.text)
-    print("正式评测 JSON 识别")
-    if parsed is None:
-        print("- 结果：失败")
-        print(f"- 原因：{parse_error}")
-        if prompt:
-            print("- 说明：自定义自然语言提示词通常不会返回正式 JSON；如需测试评测协议，请不要传 --prompt。")
-        else:
-            print("- 说明：正式 assessment-run 需要模型输出可解析的 JSON 对象；该模型当前响应不能进入程序化评分。")
-        print("")
-        return
-
-    missing_fields = [field for field in REQUIRED_OUTPUT_FIELDS if not parsed.get(field)]
-    print("- 结果：成功")
-    if missing_fields:
-        print(f"- 字段完整性：缺少 {', '.join(missing_fields)}")
-        print("- 说明：可以被解析，但正式评测会因字段不完整而扣分。")
-    else:
-        print("- 字段完整性：完整")
     print("")
 
 
@@ -238,7 +197,9 @@ def _call_error_hint(model, exc: Exception) -> str:
     if "timed out" not in message and "timeout" not in message:
         return ""
     env_name = f"ARENA_MODEL_{model.alias.upper().replace('-', '_')}_TIMEOUT_SECONDS"
-    return f"请求超时；将 .env 中 {env_name} 调高，例如 180，并确认 PyCharm Working directory 是项目根目录 D:\\code\\MultiModelArena"
+    current = model.timeout_seconds
+    suggested = max(current * 2, 300)
+    return f"请求超时；当前 {env_name}={current}，可调高到 {suggested}，并确认 PyCharm Working directory 是项目根目录 D:\\code\\MultiModelArena"
 
 
 def _select_models(models, alias: str | None):

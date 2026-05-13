@@ -28,7 +28,7 @@ ARENA_MODEL_DEEPSEEK_CHAT_MODEL_NAME=deepseek-chat
 
 ### Provider 适配层
 
-统一不同供应商的请求、响应、错误和用量信息。MVP 优先支持 OpenAI-compatible Chat Completions 接口，后续再增加原生供应商适配器。
+统一不同供应商的请求、响应、错误和用量信息。当前支持 fake provider、OpenAI-compatible Chat Completions 接口和 Anthropic-compatible Messages 接口，后续再按需要增加原生供应商适配器。
 
 ### 评测编排层
 
@@ -37,10 +37,12 @@ ARENA_MODEL_DEEPSEEK_CHAT_MODEL_NAME=deepseek-chat
 当前主流程：
 
 1. 所有模型独立完成个人行动领域基准任务。
-2. 系统注入价值变化、新证据等扰动。
-3. 模型按固定 JSON 协议更新建议。
-4. 规则评分器根据任务结构、隐藏偏好、候选方案和扰动预期打分。
-5. 统计领域分、Decision Quality 评分框架结果、行为指纹和角色适配。
+2. 调度器按 `base_url` 分组；不同请求入口并发执行，同一请求入口内部串行排队。
+3. 系统注入价值变化、新证据等扰动。
+4. 模型按固定 JSON 协议更新建议。
+5. 规则评分器根据任务结构、隐藏偏好、候选方案和扰动预期打分。
+6. 在不增加模型调用的前提下，对已返回响应做拆解诊断，识别约束锚定、权衡方法、风险可逆性、行动具体性和方法多样性。
+7. 统计领域分、Decision Quality 评分框架结果、响应拆解分、行为指纹和角色适配。
 
 旧版互评流程仍保留在 `arena run`，当前模型能力评估主流程使用 `arena assessment-run`。
 
@@ -58,7 +60,8 @@ ARENA_MODEL_DEEPSEEK_CHAT_MODEL_NAME=deepseek-chat
 报告至少包含：
 
 - 总览排名。
-- 每个模型的领域分、Decision Quality 评分框架结果、行为计数和适合角色。
+- 每个模型的领域分、Decision Quality 评分框架结果、响应拆解评估、行为计数和适合角色。
+- 每个模型的方法与分析角度指纹，以及“为什么这说明模型有某种能力”的证据说明。
 - 程序化规则分和失败项。
 - 证据摘录、任务定义和原始记录文件链接，不在 Markdown 中内嵌完整回答。
 - 运行配置摘要，但不展示 API Key。
@@ -73,8 +76,9 @@ ARENA_MODEL_DEEPSEEK_CHAT_MODEL_NAME=deepseek-chat
 - 专业边界提示。
 - 扰动响应。
 - 7 天 / 30 天行动计划和复盘条件。
+- 响应拆解诊断：约束锚定、价值拆解、权衡推理、信息追问、风险与可逆性、行动可执行性、变化适配、校准边界和方法多样性。
 
-模型裁判只能作为旁路功能，用于报告摘要或标记可疑样本，不能计入总评分。
+当前 `assessment-run` 不调用模型裁判，也没有单独配置 judge model。模型裁判如后续加入，只能作为旁路功能用于报告摘要或标记可疑样本，不能计入总评分。
 
 ## 评分维度
 

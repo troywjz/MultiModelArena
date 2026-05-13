@@ -8,12 +8,10 @@ def test_probe_model_prints_raw_response_and_json_check(capsys):
     output = capsys.readouterr().out
     assert exit_code == 0
     assert "模型探针测试，目标模型数：2" in output
-    assert "模式：正式评测 JSON 协议" in output
     assert "原始响应" not in output
-    assert "响应原文：已隐藏" in output
-    assert "正式评测 JSON 识别" in output
-    assert "结果：成功" in output
-    assert "字段完整性：完整" in output
+    assert "调用结果：成功" in output
+    assert "Temperature" not in output
+    assert "正式评测 JSON 识别" not in output
 
 
 def test_probe_model_custom_prompt_is_connectivity_mode(capsys):
@@ -22,9 +20,8 @@ def test_probe_model_custom_prompt_is_connectivity_mode(capsys):
     output = capsys.readouterr().out
     assert exit_code == 0
     assert "模型探针测试，目标模型数：1" in output
-    assert "模式：自定义连通性提示词" in output
-    assert "结果：失败" in output
-    assert "如需测试评测协议，请不要传 --prompt" in output
+    assert "调用结果：成功" in output
+    assert "自定义连通性提示词" not in output
 
 
 def test_probe_model_can_show_raw_response(capsys):
@@ -60,4 +57,4 @@ def test_call_error_hint_reports_timeout_setting():
     hint = _call_error_hint(model, TimeoutError("The read operation timed out"))
 
     assert "ARENA_MODEL_MINIMAX_T01_TIMEOUT_SECONDS" in hint
-    assert "180" in hint
+    assert "300" in hint

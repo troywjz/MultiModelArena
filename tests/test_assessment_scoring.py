@@ -18,7 +18,7 @@ def test_score_assessment_result_uses_programmatic_rules():
         "recommended_option": "渐进转型",
         "option_ranking": ["渐进转型", "内部转岗", "副项目验证"],
         "confidence": 0.7,
-        "risks": ["收入波动", "时间不足"],
+        "risks": ["收入波动风险", "时间不足风险"],
         "next_actions_7_days": ["确认收入底线"],
         "next_actions_30_days": ["做副项目"],
         "revisit_conditions": ["收入下降"],
@@ -36,4 +36,8 @@ def test_score_assessment_result_uses_programmatic_rules():
     assert result.domain_scores["事业与成长"] > 7
     assert result.quality_scores["Creative Alternatives"] > 5
     assert result.rule_scores["mutation_response"] > 6
+    assert result.diagnostic_scores["tradeoff_reasoning"] > 6
+    assert result.diagnostic_scores["risk_reversibility"] > 6
+    assert result.method_fingerprint["风险复盘"] > 0
+    assert result.diagnostic_notes
     assert result.role_fit

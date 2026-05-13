@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from arena.security import redact_text
 
+from .diagnostics import DIAGNOSTIC_DIMENSIONS, analyze_response
 from .models import format_model_display_name
 
 
@@ -15,8 +18,8 @@ def generate_assessment_markdown_report(summary: dict[str, Any], output_path: Pa
 
 
 def _render(summary: dict[str, Any]) -> str:
-    results = sorted(summary["results"], key=lambda item: item["total_score"], reverse=True)
     tasks = summary["tasks"]
+    results = sorted(_with_legacy_diagnostics(summary["results"], tasks), key=lambda item: item["total_score"], reverse=True)
     summary_text = _build_report_summary(results, summary.get("summary", "没有可用摘要。"))
     validity_notice = _validity_notice(results)
     lines: list[str] = [
@@ -82,6 +85,59 @@ def _render(summary: dict[str, Any]) -> str:
     )
 
     return "\n".join(lines) + "\n"
+
+
+def _with_legacy_diagnostics(results: list[dict[str, Any]], tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """为旧 summary 补算响应拆解指标。
+
+    早期运行的 summary.json 里没有 diagnostic_scores，但它已经保存了每轮 parsed JSON。
+    这里只读取本地历史结果并重新跑规则分析，不会访问模型 API，也不会增加任何调用成本。
+    这样用户可以对旧评测结果重新生成更详细的报告。
+    """
+    task_map = {task["id"]: _task_view(task) for task in tasks}
+    enriched: list[dict[str, Any]] = []
+    for result in results:
+        item = dict(result)
+        if item.get("diagnostic_scores") or not isinstance(item.get("responses"), list):
+            enriched.append(item)
+            continue
+        diagnostic_hits: dict[str, list[float]] = defaultdict(list)
+        method_fingerprint: dict[str, float] = defaultdict(float)
+        diagnostic_notes: list[str] = []
+        baselines: dict[str, dict[str, Any]] = {}
+        for response in item["responses"]:
+            if not isinstance(response, dict) or not isinstance(response.get("parsed"), dict):
+                continue
+            task = task_map.get(response.get("task_id", ""))
+            if task is None:
+                continue
+            phase_id = str(response.get("phase_id", "baseline"))
+            parsed = response["parsed"]
+            if phase_id == "baseline":
+                baselines[str(response.get("task_id", ""))] = parsed
+            # 拆解逻辑集中在 diagnostics.py；报告层只负责对旧数据补算、聚合并展示。
+            # baseline 用作扰动轮次的对照，以判断模型是否随新增信息调整建议。
+            diagnostics = analyze_response(parsed, task, phase_id=phase_id, baseline=baselines.get(str(response.get("task_id", ""))))
+            for key, value in diagnostics.scores.items():
+                diagnostic_hits[key].append(value)
+            for key, value in diagnostics.method_counts.items():
+                method_fingerprint[key] += value
+            for note in diagnostics.notes:
+                if note not in diagnostic_notes and len(diagnostic_notes) < 8:
+                    diagnostic_notes.append(note)
+        item["diagnostic_scores"] = {key: _to_ten(_average(values)) for key, values in diagnostic_hits.items()}
+        item["method_fingerprint"] = dict(method_fingerprint)
+        item["diagnostic_notes"] = diagnostic_notes
+        enriched.append(item)
+    return enriched
+
+
+def _task_view(task: dict[str, Any]) -> SimpleNamespace:
+    return SimpleNamespace(
+        visible_constraints=task.get("visible_constraints", []),
+        hidden_values=task.get("hidden_values", {}),
+        acceptable_options=task.get("acceptable_options", []),
+    )
 
 
 def _build_report_summary(results: list[dict[str, Any]], fallback: str) -> str:
@@ -155,15 +211,27 @@ def _model_section(result: dict[str, Any]) -> list[str]:
         "",
         "#### Assessment Quality",
         "",
-        _score_table(result["quality_scores"]),
+        _score_table(result.get("quality_scores", {})),
+        "",
+        "#### 响应拆解评估",
+        "",
+        _diagnostic_table(result.get("diagnostic_scores", {})),
+        "",
+        "#### 方法与分析角度指纹",
+        "",
+        _score_table(result.get("method_fingerprint", {})),
+        "",
+        "#### 拆解证据",
+        "",
+        _diagnostic_notes(result),
         "",
         "#### 程序化规则评分",
         "",
-        _score_table(result["rule_scores"]),
+        _score_table(result.get("rule_scores", {})),
         "",
         "#### 行为指纹计数",
         "",
-        _score_table(result["behavior_fingerprint"]),
+        _score_table(result.get("behavior_fingerprint", {})),
         "",
         "#### 证据摘录",
         "",
@@ -206,6 +274,38 @@ def _score_table(scores: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _diagnostic_table(scores: dict[str, Any]) -> str:
+    # 报告里的“响应拆解评估”把英文内部指标转成中文解释，方便人工复核。
+    # 分数来自 diagnostics.py 的结构化规则，不来自模型自评或模型裁判。
+    if not scores:
+        return "无"
+    lines = ["| 拆解项 | 值 | 说明 |", "|---|---:|---|"]
+    descriptions = {
+        "constraint_grounding": "是否抓住题面约束和具体数字。",
+        "value_decomposition": "是否拆出用户价值、偏好和目标张力。",
+        "tradeoff_reasoning": "是否通过利弊、排序或成本收益做权衡。",
+        "information_seeking": "是否识别假设、澄清问题和信息缺口。",
+        "risk_reversibility": "是否提出风险、可逆性和复盘条件。",
+        "execution_specificity": "行动是否具体到时间、指标或下一步。",
+        "adaptation_to_change": "扰动后是否调整建议并避开坏方案。",
+        "calibration_boundary": "是否给出置信度和专业边界。",
+        "method_diversity": "是否使用多种分析方法而非单一结论。",
+    }
+    for key, value in scores.items():
+        label = DIAGNOSTIC_DIMENSIONS.get(key, key)
+        lines.append(f"| {_cell(label)} | {_cell(str(value))} | {_cell(descriptions.get(key, ''))} |")
+    return "\n".join(lines)
+
+
+def _diagnostic_notes(result: dict[str, Any]) -> str:
+    # “拆解证据”只放简短解释，避免把完整模型回答塞进报告。
+    # 完整回答仍保存在 runs/<run_id>/events.jsonl 和 summary.json 里。
+    notes = result.get("diagnostic_notes", [])
+    if not notes:
+        return "无"
+    return "\n".join(f"- {item}" for item in notes[:6])
+
+
 def _inline_scores(scores: dict[str, float], limit: int) -> str:
     items = _top_items(scores, limit)
     if not items:
@@ -215,6 +315,17 @@ def _inline_scores(scores: dict[str, float], limit: int) -> str:
 
 def _top_items(scores: dict[str, float], count: int) -> list[tuple[str, float]]:
     return sorted(scores.items(), key=lambda item: item[1], reverse=True)[:count]
+
+
+def _average(values: list[float]) -> float:
+    clean = [value for value in values if value is not None]
+    if not clean:
+        return 0.0
+    return sum(clean) / len(clean)
+
+
+def _to_ten(value: float) -> float:
+    return round(max(0.0, min(1.0, value)) * 10, 2)
 
 
 def _display_model_name(result: dict[str, Any]) -> str:

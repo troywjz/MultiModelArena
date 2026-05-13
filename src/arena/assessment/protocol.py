@@ -39,7 +39,7 @@ def build_assessment_messages(
         previous_text = _previous_response_summary(previous_response)
     system = (
         "只输出紧凑JSON对象，必须以{开头以}结尾。禁止Markdown、解释、分析过程、<think>。"
-        "总字数尽量500字以内，短语尽量12字内。"
+        "总字数尽量700字以内，短语尽量16字内；在字段内容里体现依据、权衡、风险和下一步。"
     )
     user = (
         f"题:{task.title};域:{task.domain};问题:{task.prompt};新增:{mutation_text};上轮:{previous_text}。"
@@ -47,7 +47,7 @@ def build_assessment_messages(
         "约束:alternatives恰好3项,每项含name,type,pros,cons,reversibility,pros/cons各1短句;"
         "assumptions,clarifying_questions,values_detected,risks,next_actions_7_days,next_actions_30_days,"
         "revisit_conditions各最多2项;option_ranking恰好3个名称;confidence为0到1;"
-        "professional_boundary一句,无专业风险写个人判断即可。"
+        "行动和复盘条件尽量带时间、阈值或可验证信号;professional_boundary一句,无专业风险写个人判断即可。"
     )
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 

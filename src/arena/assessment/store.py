@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import sqlite3
+from threading import Lock
 import time
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,7 @@ class AssessmentRunStore:
         self.events_path = self.output_dir / "events.jsonl"
         self.summary_path = self.output_dir / "summary.json"
         self.db_path = self.output_dir / "summary.sqlite3"
+        self._event_lock = Lock()
         self._init_db()
 
     def _init_db(self) -> None:
@@ -32,6 +34,8 @@ class AssessmentRunStore:
                     provider text not null,
                     temperature real,
                     total_score real not null,
+                    diagnostic_scores text not null,
+                    method_fingerprint text not null,
                     role_fit text not null,
                     failures text not null,
                     errors text not null
@@ -52,7 +56,9 @@ class AssessmentRunStore:
     def record_event(self, event_type: str, payload: dict[str, Any]) -> None:
         event = {"type": event_type, "payload": payload}
         safe = json.loads(redact_text(json.dumps(event, ensure_ascii=False), self.known_secrets))
-        self._append_event_line(json.dumps(safe, ensure_ascii=False) + "\n")
+        # 不同请求入口会并发写事件文件；加锁保证 JSONL 不会交错写入半行。
+        with self._event_lock:
+            self._append_event_line(json.dumps(safe, ensure_ascii=False) + "\n")
 
     def _append_event_line(self, line: str) -> None:
         # Windows 上偶发的杀毒/索引扫描可能短暂占用文件；这里重试避免丢掉整次评估。
@@ -87,8 +93,8 @@ class AssessmentRunStore:
                 conn.execute(
                     """
                     insert into assessment_model_results (
-                        alias, model_name, provider, temperature, total_score, role_fit, failures, errors
-                    ) values (?, ?, ?, ?, ?, ?, ?, ?)
+                        alias, model_name, provider, temperature, total_score, diagnostic_scores, method_fingerprint, role_fit, failures, errors
+                    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         result.alias,
@@ -96,6 +102,8 @@ class AssessmentRunStore:
                         result.provider,
                         result.temperature,
                         result.total_score,
+                        json.dumps(result.diagnostic_scores, ensure_ascii=False),
+                        json.dumps(result.method_fingerprint, ensure_ascii=False),
                         json.dumps(result.role_fit, ensure_ascii=False),
                         json.dumps(result.failures, ensure_ascii=False),
                         json.dumps(result.errors, ensure_ascii=False),

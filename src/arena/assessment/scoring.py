@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
+from .diagnostics import analyze_response
 from .models import QUALITY_DIMENSIONS, ROLE_FIT_RULES, AssessmentModelResult, AssessmentTask
 from .protocol import REQUIRED_OUTPUT_FIELDS
 
@@ -12,6 +13,9 @@ def score_assessment_result(result: AssessmentModelResult, tasks: list[Assessmen
     domain_hits: dict[str, list[float]] = defaultdict(list)
     dq_hits: dict[str, list[float]] = {name: [] for name in QUALITY_DIMENSIONS}
     rule_hits: dict[str, list[float]] = defaultdict(list)
+    diagnostic_hits: dict[str, list[float]] = defaultdict(list)
+    method_fingerprint: dict[str, float] = defaultdict(float)
+    diagnostic_notes: list[str] = []
     behavior = {
         "clarifying_questions": 0.0,
         "alternative_count": 0.0,
@@ -73,6 +77,15 @@ def score_assessment_result(result: AssessmentModelResult, tasks: list[Assessmen
         for name, score in dq.items():
             dq_hits[name].append(score)
 
+        diagnostics = analyze_response(parsed, task, phase_id=response.phase_id, baseline=baselines.get(task.id))
+        for name, score in diagnostics.scores.items():
+            diagnostic_hits[name].append(score)
+        for name, count in diagnostics.method_counts.items():
+            method_fingerprint[name] += count
+        for note in diagnostics.notes:
+            if note not in diagnostic_notes and len(diagnostic_notes) < 8:
+                diagnostic_notes.append(note)
+
         domain_hits[task.domain].append(
             _average(
                 [
@@ -92,8 +105,11 @@ def score_assessment_result(result: AssessmentModelResult, tasks: list[Assessmen
     result.rule_scores = {name: _to_ten(_average(values)) for name, values in rule_hits.items()}
     result.domain_scores = {name: _to_ten(_average(values)) for name, values in domain_hits.items()}
     result.quality_scores = {name: _to_ten(_average(values)) for name, values in dq_hits.items() if values}
+    result.diagnostic_scores = {name: _to_ten(_average(values)) for name, values in diagnostic_hits.items()}
+    result.method_fingerprint = dict(method_fingerprint)
+    result.diagnostic_notes = diagnostic_notes
     result.behavior_fingerprint = behavior
-    result.role_fit = _role_fit(result.quality_scores, result.behavior_fingerprint)
+    result.role_fit = _role_fit(result.quality_scores, result.behavior_fingerprint, result.diagnostic_scores)
 
 
 def _score_completeness(parsed: dict[str, Any]) -> float:
@@ -146,18 +162,40 @@ def _score_mutation_response(
     return _average([1.0 if expected else 0.0, 1.0 if avoided else 0.0, 1.0 if changed else 0.0])
 
 
-def _role_fit(dq_scores: dict[str, float], behavior: dict[str, float]) -> dict[str, float]:
+def _role_fit(dq_scores: dict[str, float], behavior: dict[str, float], diagnostic_scores: dict[str, float]) -> dict[str, float]:
     role_scores: dict[str, float] = {}
     for role, dimensions in ROLE_FIT_RULES.items():
         base = _average([dq_scores.get(dimension, 0.0) / 10 for dimension in dimensions])
+        if role == "通用主持专家":
+            base = _average([base, diagnostic_scores.get("constraint_grounding", 0.0) / 10])
+        if role == "用户价值专家":
+            base = _average([base, diagnostic_scores.get("value_decomposition", 0.0) / 10])
+        if role == "信息审查专家":
+            base = _average([base, diagnostic_scores.get("information_seeking", 0.0) / 10])
         if role == "风险专家":
-            base = _average([base, min(1.0, behavior.get("risk_count", 0) / 12), min(1.0, behavior.get("boundary_present_count", 0) / 4)])
+            base = _average(
+                [
+                    base,
+                    min(1.0, behavior.get("risk_count", 0) / 12),
+                    min(1.0, behavior.get("boundary_present_count", 0) / 4),
+                    diagnostic_scores.get("risk_reversibility", 0.0) / 10,
+                ]
+            )
         if role == "方案生成专家":
-            base = _average([base, min(1.0, behavior.get("creative_option_count", 0) / 8)])
+            base = _average([base, min(1.0, behavior.get("creative_option_count", 0) / 8), diagnostic_scores.get("method_diversity", 0.0) / 10])
         if role == "执行规划专家":
-            base = _average([base, min(1.0, behavior.get("action_count", 0) / 16)])
+            base = _average([base, min(1.0, behavior.get("action_count", 0) / 16), diagnostic_scores.get("execution_specificity", 0.0) / 10])
+        if role == "权衡仲裁专家":
+            base = _average([base, diagnostic_scores.get("tradeoff_reasoning", 0.0) / 10])
         if role == "红队专家":
-            base = _average([base, min(1.0, behavior.get("risk_count", 0) / 12)])
+            base = _average(
+                [
+                    base,
+                    min(1.0, behavior.get("risk_count", 0) / 12),
+                    diagnostic_scores.get("risk_reversibility", 0.0) / 10,
+                    diagnostic_scores.get("calibration_boundary", 0.0) / 10,
+                ]
+            )
         role_scores[role] = _to_ten(base)
     return role_scores
 

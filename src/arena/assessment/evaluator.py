@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from uuid import uuid4
 
 from arena.config import ArenaConfig
+from arena.models import ModelConfig
 from arena.providers import build_provider
 
 from .models import AssessmentModelResult, AssessmentPhaseResponse, AssessmentRunSummary, AssessmentTask
@@ -23,60 +26,21 @@ class AssessmentEvaluator:
         output_dir = self.config.output_root / run_id
         store = AssessmentRunStore(output_dir, known_secrets=[model.api_key for model in self.config.models])
         providers = {model.alias: build_provider(model) for model in self.config.models}
-        results: list[AssessmentModelResult] = []
+        groups = _group_models_by_request_endpoint(self.config.models)
+        results_by_alias: dict[str, AssessmentModelResult] = {}
 
-        for model in self.config.models:
-            result = AssessmentModelResult(
-                alias=model.alias,
-                model_name=model.model_name,
-                provider=model.provider,
-                role_hint=model.role_hint,
-                temperature=model.temperature,
-            )
-            provider = providers[model.alias]
-            for task in self.tasks:
-                previous_parsed = None
-                phases = [None, *task.mutations]
-                for mutation in phases:
-                    phase_id = "baseline" if mutation is None else mutation.id
-                    messages = build_assessment_messages(task, mutation=mutation, previous_response=previous_parsed)
-                    prompt_text = messages[-1]["content"]
-                    try:
-                        response = provider.complete(messages)
-                        parsed, parse_error = parse_json_response(response.text)
-                        if parsed is not None:
-                            previous_parsed = parsed
-                        phase_response = AssessmentPhaseResponse(
-                            task_id=task.id,
-                            phase_id=phase_id,
-                            prompt=prompt_text,
-                            raw_text=response.text,
-                            parsed=parsed,
-                            parse_error=parse_error,
-                            usage=response.usage,
-                        )
-                        result.responses.append(phase_response)
-                        store.record_event(
-                            "assessment_response",
-                            {
-                                "alias": model.alias,
-                                "task_id": task.id,
-                                "phase_id": phase_id,
-                                "raw_text": response.text,
-                                "parsed": parsed,
-                                "parse_error": parse_error,
-                                "usage": response.usage,
-                            },
-                        )
-                    except Exception as exc:  # noqa: BLE001 - 单模型/单阶段失败需要记录并继续
-                        error = f"{task.id}/{phase_id}: {exc}"
-                        result.errors.append(error)
-                        store.record_event(
-                            "assessment_error",
-                            {"alias": model.alias, "task_id": task.id, "phase_id": phase_id, "error": str(exc)},
-                        )
-            score_assessment_result(result, self.tasks)
-            results.append(result)
+        # 同一个 base_url 视为同一请求入口，组内串行，避免对同一供应商网关地址并发压测。
+        # 不同请求入口之间并发执行，用于同时评测不同供应商或不同网关地址的模型。
+        with ThreadPoolExecutor(max_workers=max(1, len(groups))) as executor:
+            futures = [
+                executor.submit(self._run_model_group, group_models, providers, store)
+                for group_models in groups.values()
+            ]
+            for future in as_completed(futures):
+                for result in future.result():
+                    results_by_alias[result.alias] = result
+
+        results = [results_by_alias[model.alias] for model in self.config.models if model.alias in results_by_alias]
 
         summary = AssessmentRunSummary(
             run_id=run_id,
@@ -87,3 +51,85 @@ class AssessmentEvaluator:
         )
         store.write_summary(summary)
         return summary
+
+    def _run_model_group(
+        self,
+        models: list[ModelConfig],
+        providers: dict[str, object],
+        store: AssessmentRunStore,
+    ) -> list[AssessmentModelResult]:
+        results: list[AssessmentModelResult] = []
+        for model in models:
+            result = self._run_one_model(model, providers[model.alias], store)
+            results.append(result)
+        return results
+
+    def _run_one_model(
+        self,
+        model: ModelConfig,
+        provider: object,
+        store: AssessmentRunStore,
+    ) -> AssessmentModelResult:
+        result = AssessmentModelResult(
+            alias=model.alias,
+            model_name=model.model_name,
+            provider=model.provider,
+            role_hint=model.role_hint,
+            temperature=model.temperature,
+        )
+        for task in self.tasks:
+            previous_parsed = None
+            phases = [None, *task.mutations]
+            for mutation in phases:
+                phase_id = "baseline" if mutation is None else mutation.id
+                messages = build_assessment_messages(task, mutation=mutation, previous_response=previous_parsed)
+                prompt_text = messages[-1]["content"]
+                try:
+                    response = provider.complete(messages)
+                    parsed, parse_error = parse_json_response(response.text)
+                    if parsed is not None:
+                        previous_parsed = parsed
+                    phase_response = AssessmentPhaseResponse(
+                        task_id=task.id,
+                        phase_id=phase_id,
+                        prompt=prompt_text,
+                        raw_text=response.text,
+                        parsed=parsed,
+                        parse_error=parse_error,
+                        usage=response.usage,
+                    )
+                    result.responses.append(phase_response)
+                    store.record_event(
+                        "assessment_response",
+                        {
+                            "alias": model.alias,
+                            "task_id": task.id,
+                            "phase_id": phase_id,
+                            "raw_text": response.text,
+                            "parsed": parsed,
+                            "parse_error": parse_error,
+                            "usage": response.usage,
+                        },
+                    )
+                except Exception as exc:  # noqa: BLE001 - 单模型/单阶段失败需要记录并继续
+                    error = f"{task.id}/{phase_id}: {exc}"
+                    result.errors.append(error)
+                    store.record_event(
+                        "assessment_error",
+                        {"alias": model.alias, "task_id": task.id, "phase_id": phase_id, "error": str(exc)},
+                    )
+        score_assessment_result(result, self.tasks)
+        return result
+
+
+def _group_models_by_request_endpoint(models: list[ModelConfig]) -> dict[str, list[ModelConfig]]:
+    groups: dict[str, list[ModelConfig]] = defaultdict(list)
+    for model in models:
+        groups[_request_endpoint_key(model)].append(model)
+    return dict(groups)
+
+
+def _request_endpoint_key(model: ModelConfig) -> str:
+    if model.provider == "fake":
+        return f"fake:{model.alias}"
+    return model.base_url.strip().rstrip("/").lower()

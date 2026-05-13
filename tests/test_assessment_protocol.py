@@ -20,7 +20,8 @@ def test_build_assessment_messages_contains_json_contract():
     assert "PHASE_ID:" not in messages[1]["content"]
     assert "输出JSON字段" in messages[1]["content"]
     assert "problem_frame" in messages[1]["content"]
-    assert "500字以内" in messages[0]["content"]
+    assert "700字以内" in messages[0]["content"]
+    assert "依据、权衡、风险和下一步" in messages[0]["content"]
 
 
 def test_parse_json_response_accepts_code_fence():

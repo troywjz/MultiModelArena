@@ -114,6 +114,9 @@ class AssessmentModelResult:
     behavior_fingerprint: dict[str, float] = field(default_factory=dict)
     role_fit: dict[str, float] = field(default_factory=dict)
     rule_scores: dict[str, float] = field(default_factory=dict)
+    diagnostic_scores: dict[str, float] = field(default_factory=dict)
+    method_fingerprint: dict[str, float] = field(default_factory=dict)
+    diagnostic_notes: list[str] = field(default_factory=list)
     evidence: list[str] = field(default_factory=list)
     failures: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
@@ -123,6 +126,7 @@ class AssessmentModelResult:
         score_groups = [
             self.domain_scores,
             self.quality_scores,
+            self.diagnostic_scores,
             self.role_fit,
         ]
         values = [value for group in score_groups for value in group.values()]
@@ -143,6 +147,9 @@ class AssessmentModelResult:
             "behavior_fingerprint": self.behavior_fingerprint,
             "role_fit": self.role_fit,
             "rule_scores": self.rule_scores,
+            "diagnostic_scores": self.diagnostic_scores,
+            "method_fingerprint": self.method_fingerprint,
+            "diagnostic_notes": self.diagnostic_notes,
             "total_score": self.total_score,
             "evidence": self.evidence,
             "failures": self.failures,

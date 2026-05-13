@@ -1,9 +1,12 @@
 import json
+from threading import Barrier, Lock
+import time
 
 from arena.config import ArenaConfig
 from arena.assessment.evaluator import AssessmentEvaluator
+from arena.assessment.models import AssessmentTask
 from arena.assessment.report import generate_assessment_markdown_report
-from arena.models import ModelConfig
+from arena.models import ModelConfig, ProviderResponse
 
 
 def test_assessment_evaluator_runs_fake_provider(tmp_path):
@@ -25,6 +28,73 @@ def test_assessment_evaluator_runs_fake_provider(tmp_path):
     assert all(result.total_score > 0 for result in summary.results)
 
 
+def test_assessment_evaluator_runs_different_endpoints_concurrently(tmp_path, monkeypatch):
+    task = _single_phase_task()
+    barrier = Barrier(2, timeout=2)
+
+    class BarrierProvider:
+        def __init__(self, alias: str) -> None:
+            self.alias = alias
+
+        def complete(self, messages):  # noqa: ANN001
+            barrier.wait()
+            return ProviderResponse(text=json.dumps(_valid_assessment_response(self.alias), ensure_ascii=False))
+
+    monkeypatch.setattr(
+        "arena.assessment.evaluator.build_provider",
+        lambda model: BarrierProvider(model.alias),
+    )
+    config = ArenaConfig(
+        models=[
+            ModelConfig(alias="a", provider="openai_compatible", model_name="a", base_url="https://a.example/v1"),
+            ModelConfig(alias="b", provider="openai_compatible", model_name="b", base_url="https://b.example/v1"),
+        ],
+        output_root=tmp_path,
+    )
+
+    summary = AssessmentEvaluator(config, tasks=[task]).run()
+
+    assert len(summary.results) == 2
+    assert all(not result.errors for result in summary.results)
+
+
+def test_assessment_evaluator_serializes_same_endpoint(tmp_path, monkeypatch):
+    task = _single_phase_task()
+    lock = Lock()
+    state = {"active": 0, "overlap": False}
+
+    class OverlapDetectingProvider:
+        def __init__(self, alias: str) -> None:
+            self.alias = alias
+
+        def complete(self, messages):  # noqa: ANN001
+            with lock:
+                state["active"] += 1
+                if state["active"] > 1:
+                    state["overlap"] = True
+            time.sleep(0.05)
+            with lock:
+                state["active"] -= 1
+            return ProviderResponse(text=json.dumps(_valid_assessment_response(self.alias), ensure_ascii=False))
+
+    monkeypatch.setattr(
+        "arena.assessment.evaluator.build_provider",
+        lambda model: OverlapDetectingProvider(model.alias),
+    )
+    config = ArenaConfig(
+        models=[
+            ModelConfig(alias="glm", provider="openai_compatible", model_name="glm", base_url="https://api.siliconflow.cn/v1"),
+            ModelConfig(alias="deepseek", provider="openai_compatible", model_name="deepseek", base_url="https://api.siliconflow.cn/v1"),
+        ],
+        output_root=tmp_path,
+    )
+
+    summary = AssessmentEvaluator(config, tasks=[task]).run()
+
+    assert len(summary.results) == 2
+    assert state["overlap"] is False
+
+
 def test_assessment_report_contains_programmatic_scoring(tmp_path):
     config = ArenaConfig(
         models=[ModelConfig(alias="a", provider="fake", model_name="fake-a", api_key="sk-test-secret-value")],
@@ -38,6 +108,10 @@ def test_assessment_report_contains_programmatic_scoring(tmp_path):
 
     assert "# 模型能力评估报告" in markdown
     assert "Assessment Quality" in markdown
+    assert "#### 响应拆解评估" in markdown
+    assert "约束锚定" in markdown
+    assert "#### 方法与分析角度指纹" in markdown
+    assert "#### 拆解证据" in markdown
     assert "fake-a（温度 0.2）" in markdown
     assert "- Temperature：0.2" in markdown
     assert "## 原始记录文件" in markdown
@@ -136,3 +210,40 @@ def test_assessment_report_infers_temperature_from_alias_for_old_summaries(tmp_p
 
     assert "MiniMax-M2.7（温度 0.8）" in markdown
     assert "- Temperature：0.8" in markdown
+
+
+def _single_phase_task() -> AssessmentTask:
+    return AssessmentTask(
+        id="task_1",
+        domain="个人生活",
+        title="测试任务",
+        prompt="用户需要在预算和时间约束下做选择。",
+        visible_constraints=["预算", "时间"],
+        hidden_values={"budget": 0.5, "time": 0.5},
+        acceptable_options=["小规模试点", "暂缓"],
+        bad_options=["一次性投入全部预算"],
+        scoring_points=[],
+        mutations=[],
+    )
+
+
+def _valid_assessment_response(alias: str) -> dict[str, object]:
+    return {
+        "problem_frame": f"{alias} 在预算和时间之间做低后悔选择。",
+        "assumptions": ["预算有限", "时间有限"],
+        "clarifying_questions": ["预算上限是多少？", "最晚何时决定？"],
+        "values_detected": ["预算", "时间"],
+        "alternatives": [
+            {"name": "小规模试点", "type": "stage_gate", "pros": ["可验证"], "cons": ["较慢"], "reversibility": "high"},
+            {"name": "暂缓", "type": "hold", "pros": ["安全"], "cons": ["错过机会"], "reversibility": "medium"},
+            {"name": "直接执行", "type": "direct_path", "pros": ["快"], "cons": ["风险高"], "reversibility": "low"},
+        ],
+        "recommended_option": "小规模试点",
+        "option_ranking": ["小规模试点", "暂缓", "直接执行"],
+        "confidence": 0.7,
+        "risks": ["预算超支风险", "时间不足风险"],
+        "next_actions_7_days": ["7天内确认预算"],
+        "next_actions_30_days": ["30天内复盘试点"],
+        "revisit_conditions": ["预算变化"],
+        "professional_boundary": "这是个人判断，不替代专业建议。",
+    }
