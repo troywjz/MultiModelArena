@@ -1,3 +1,5 @@
+﻿# 检查报告输出路径和文件名规则。
+# 输入：运行摘要数据；输出：pytest 断言结果。
 from arena.report_output import model_family_slug, model_slug_from_summary
 
 

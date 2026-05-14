@@ -1,3 +1,5 @@
+﻿# 提供离线 fake 模型适配器。
+# 输入：消息列表；输出：模拟模型响应。
 from __future__ import annotations
 
 import hashlib

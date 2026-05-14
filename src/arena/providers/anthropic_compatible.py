@@ -1,3 +1,5 @@
+﻿# 调用 Anthropic 兼容消息接口。
+# 输入：消息列表和模型配置；输出：标准化模型响应。
 from __future__ import annotations
 
 import json

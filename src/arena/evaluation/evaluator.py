@@ -1,3 +1,5 @@
+﻿# 编排旧版多模型互评流程。
+# 输入：模型配置和旧版任务；输出：运行摘要。
 from __future__ import annotations
 
 from datetime import datetime, timezone

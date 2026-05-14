@@ -1,3 +1,5 @@
+﻿# 生成评测提示词并解析 JSON 响应。
+# 输入：任务、扰动和模型文本；输出：消息列表或解析结果。
 from __future__ import annotations
 
 import json

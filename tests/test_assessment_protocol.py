@@ -1,3 +1,5 @@
+﻿# 检查评测提示词协议和 JSON 解析。
+# 输入：模型文本响应；输出：pytest 断言结果。
 from arena.assessment.protocol import build_assessment_messages, parse_json_response
 from arena.assessment.tasks import DEFAULT_ASSESSMENT_TASKS
 

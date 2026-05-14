@@ -1,3 +1,5 @@
+﻿# 计算旧版评测分数。
+# 输入：旧版模型运行结果；输出：维度分和角色建议。
 from __future__ import annotations
 
 from arena.models import DIMENSIONS, TEAM_ROLES, ModelRunResult

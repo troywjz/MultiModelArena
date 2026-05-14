@@ -1,3 +1,5 @@
+﻿# 定义当前评测数据结构。
+# 输入：评测过程数据；输出：可序列化的结果对象。
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -37,6 +39,20 @@ ROLE_FIT_RULES = {
     "权衡仲裁专家": ["Sound Reasoning", "Clear Values"],
     "执行规划专家": ["Commitment to Follow Through"],
     "红队专家": ["Useful Information"],
+    "结论整合专家": ["Helpful Frame", "Sound Reasoning", "Commitment to Follow Through"],
+}
+
+
+ROLE_DEFINITIONS = {
+    "通用主持专家": "负责框定议题、维持讨论顺序、让不同角色围绕同一问题充分表达，并在必要时把讨论拉回目标。",
+    "用户价值专家": "负责识别用户真实目标、偏好、价值冲突和隐含优先级，避免会议只优化表面指标。",
+    "信息审查专家": "负责区分事实、假设和未知信息，提出需要补充验证的问题，防止用不充分信息直接定案。",
+    "方案生成专家": "负责提出多样化备选方案，包括低后悔、小步试点、折中和暂缓方案，避免只给单一路径。",
+    "权衡仲裁专家": "负责比较备选方案的收益、成本、机会成本和约束匹配度，帮助会议形成可辩护排序。",
+    "风险专家": "负责识别不确定性、下行风险、止损条件、可逆性和预案，保护决策不被乐观叙事带偏。",
+    "执行规划专家": "负责把结论转成 7 天、30 天和复盘节点的行动计划，检查下一步是否具体可执行。",
+    "红队专家": "负责主动挑战推荐方案，寻找反例、失败模式、过度自信和专业边界问题。",
+    "结论整合专家": "负责把多角色意见压缩成最终建议、分歧点、触发条件和待复核事项，服务后续民主集中制会议形成决议。",
 }
 
 
@@ -116,6 +132,9 @@ class AssessmentModelResult:
     rule_scores: dict[str, float] = field(default_factory=dict)
     diagnostic_scores: dict[str, float] = field(default_factory=dict)
     method_fingerprint: dict[str, float] = field(default_factory=dict)
+    semantic_scores: dict[str, float] = field(default_factory=dict)
+    semantic_role_fit: dict[str, float] = field(default_factory=dict)
+    semantic_notes: list[str] = field(default_factory=list)
     diagnostic_notes: list[str] = field(default_factory=list)
     evidence: list[str] = field(default_factory=list)
     failures: list[str] = field(default_factory=list)
@@ -128,6 +147,7 @@ class AssessmentModelResult:
             self.quality_scores,
             self.rule_scores,
             self.diagnostic_scores,
+            self.semantic_scores,
             self.role_fit,
         ]
         group_scores = [_average(list(group.values())) for group in score_groups if group]
@@ -150,6 +170,9 @@ class AssessmentModelResult:
             "rule_scores": self.rule_scores,
             "diagnostic_scores": self.diagnostic_scores,
             "method_fingerprint": self.method_fingerprint,
+            "semantic_scores": self.semantic_scores,
+            "semantic_role_fit": self.semantic_role_fit,
+            "semantic_notes": self.semantic_notes,
             "diagnostic_notes": self.diagnostic_notes,
             "total_score": self.total_score,
             "evidence": self.evidence,
@@ -183,7 +206,12 @@ def build_summary(results: list[AssessmentModelResult]) -> str:
     if not results:
         return "没有可用评估结果。"
     ranked = sorted(results, key=lambda result: result.total_score, reverse=True)
-    lines = ["本次总评分仅来自程序化规则，不包含模型裁判。"]
+    has_semantic = any(result.semantic_scores for result in ranked)
+    lines = [
+        "本次总评分来自本地规则和参考答案语义相似度，不包含模型裁判。"
+        if has_semantic
+        else "本次总评分仅来自本地程序化规则，不包含模型裁判。"
+    ]
     for result in ranked:
         best_roles = sorted(result.role_fit.items(), key=lambda item: item[1], reverse=True)[:2]
         role_text = "、".join(name for name, _score in best_roles) or "待定"

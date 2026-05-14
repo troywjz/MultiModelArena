@@ -1,3 +1,5 @@
+﻿# 检查旧版 Markdown 报告生成。
+# 输入：旧版运行摘要；输出：pytest 断言结果。
 import json
 
 from arena.config import ArenaConfig

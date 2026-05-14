@@ -1,3 +1,5 @@
+﻿# 定义旧版评测任务。
+# 输入：无；输出：任务列表。
 from __future__ import annotations
 
 from .models import Task

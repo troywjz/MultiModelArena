@@ -1,3 +1,5 @@
+﻿# 保存当前评测运行记录。
+# 输入：评测摘要和事件；输出：JSON、JSONL 和 SQLite 文件。
 from __future__ import annotations
 
 import json
@@ -36,6 +38,8 @@ class AssessmentRunStore:
                     total_score real not null,
                     diagnostic_scores text not null,
                     method_fingerprint text not null,
+                    semantic_scores text not null default '{}',
+                    semantic_role_fit text not null default '{}',
                     role_fit text not null,
                     failures text not null,
                     errors text not null
@@ -89,12 +93,14 @@ class AssessmentRunStore:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("delete from assessment_model_results")
             conn.execute("delete from assessment_domain_scores")
+            _ensure_column(conn, "assessment_model_results", "semantic_scores", "text not null default '{}'")
+            _ensure_column(conn, "assessment_model_results", "semantic_role_fit", "text not null default '{}'")
             for result in summary.results:
                 conn.execute(
                     """
                     insert into assessment_model_results (
-                        alias, model_name, provider, temperature, total_score, diagnostic_scores, method_fingerprint, role_fit, failures, errors
-                    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        alias, model_name, provider, temperature, total_score, diagnostic_scores, method_fingerprint, semantic_scores, semantic_role_fit, role_fit, failures, errors
+                    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         result.alias,
@@ -104,6 +110,8 @@ class AssessmentRunStore:
                         result.total_score,
                         json.dumps(result.diagnostic_scores, ensure_ascii=False),
                         json.dumps(result.method_fingerprint, ensure_ascii=False),
+                        json.dumps(result.semantic_scores, ensure_ascii=False),
+                        json.dumps(result.semantic_role_fit, ensure_ascii=False),
                         json.dumps(result.role_fit, ensure_ascii=False),
                         json.dumps(result.failures, ensure_ascii=False),
                         json.dumps(result.errors, ensure_ascii=False),
@@ -114,3 +122,9 @@ class AssessmentRunStore:
                         "insert into assessment_domain_scores (alias, domain, score) values (?, ?, ?)",
                         (result.alias, domain, score),
                     )
+
+
+def _ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, definition: str) -> None:
+    columns = {row[1] for row in conn.execute(f"pragma table_info({table_name})")}
+    if column_name not in columns:
+        conn.execute(f"alter table {table_name} add column {column_name} {definition}")

@@ -1,3 +1,5 @@
+﻿# 编排当前模型能力评测。
+# 输入：模型配置和任务；输出：评测摘要和落盘记录。
 from __future__ import annotations
 
 from collections import defaultdict
@@ -6,12 +8,14 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from arena.config import ArenaConfig
+from arena.embeddings import EmbeddingCache
 from arena.models import ModelConfig
 from arena.providers import build_provider
 
 from .models import AssessmentModelResult, AssessmentPhaseResponse, AssessmentRunSummary, AssessmentTask
 from .protocol import build_assessment_messages, parse_json_response
 from .scoring import score_assessment_result
+from .semantic_scoring import apply_semantic_scoring
 from .store import AssessmentRunStore
 from .tasks import DEFAULT_ASSESSMENT_TASKS
 
@@ -24,7 +28,10 @@ class AssessmentEvaluator:
     def run(self) -> AssessmentRunSummary:
         run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:8]
         output_dir = self.config.output_root / run_id
-        store = AssessmentRunStore(output_dir, known_secrets=[model.api_key for model in self.config.models])
+        known_secrets = [model.api_key for model in self.config.models]
+        if self.config.embedding is not None:
+            known_secrets.append(self.config.embedding.api_key)
+        store = AssessmentRunStore(output_dir, known_secrets=known_secrets)
         providers = {model.alias: build_provider(model) for model in self.config.models}
         groups = _group_models_by_request_endpoint(self.config.models)
         results_by_alias: dict[str, AssessmentModelResult] = {}
@@ -41,6 +48,8 @@ class AssessmentEvaluator:
                     results_by_alias[result.alias] = result
 
         results = [results_by_alias[model.alias] for model in self.config.models if model.alias in results_by_alias]
+        if self.config.embedding is not None:
+            self._apply_semantic_scoring(results)
 
         summary = AssessmentRunSummary(
             run_id=run_id,
@@ -120,6 +129,16 @@ class AssessmentEvaluator:
                     )
         score_assessment_result(result, self.tasks)
         return result
+
+    def _apply_semantic_scoring(self, results: list[AssessmentModelResult]) -> None:
+        if self.config.embedding is None:
+            return
+        embedding_cache = EmbeddingCache(self.config.embedding)
+        for result in results:
+            try:
+                apply_semantic_scoring(result, embedding_config=self.config.embedding, embedding_cache=embedding_cache)
+            except Exception as exc:  # noqa: BLE001 - 语义评分失败不应丢掉已经完成的模型回答
+                result.errors.append(f"语义评分失败: {exc}")
 
 
 def _group_models_by_request_endpoint(models: list[ModelConfig]) -> dict[str, list[ModelConfig]]:

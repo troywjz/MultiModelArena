@@ -1,406 +1,455 @@
 # MultiModelArena
 
-MultiModelArena 是一个面向 AI 大模型横向评估的本地运行工具。用户通过环境变量配置多个模型供应商、模型名称、请求地址和 API Key，运行一次评测流程后，得到一个 Markdown 结果报告。当前主流程聚焦个人行动领域能力评估，使用结构化任务、扰动脚本和程序化规则评分，避免把模型裁判分数作为核心评分依据。
+MultiModelArena 是一个本地多模型评测工具。它读取 `.env` 里的模型配置，让多个模型回答同一组结构化决策题，再生成一份 Markdown 报告，说明每个模型的分数、失败项、行为特征和适合承担的会议角色。
 
-## 项目目标
-
-- 让多个大模型围绕结构化个人行动领域任务进行多阶段回答和扰动测试。
-- 输出统一、可比较、可追溯的模型评估结论，总评分来自程序化规则而不是模型裁判。
-- 用 Markdown 报告展示领域分、Decision Quality 概念参考下的过程质量分、响应拆解评估、行为指纹、适合角色、证据摘录和原始记录文件链接。
-- 支持用户通过环境变量切换模型供应商和模型列表，不把密钥写入仓库。
-
-## 技术栈
-
-- 后端与评测编排：Python。
-- 结果报告：本地 Markdown 文件。
-- 数据落盘：SQLite + JSONL 原始记录。
-- 验证：pytest、CLI 端到端运行和报告内容检查。
-- 配置：`.env` 环境变量，本仓库只提交 `.env.example`。
-
-## 当前阶段
-
-当前仓库已经实现 MVP 的本地最小闭环：
-
-1. 从环境变量或 `.env` 读取模型配置。
-2. 用 fake provider、OpenAI-compatible provider 或 Anthropic-compatible provider 运行模型能力评估。
-3. 保存 `events.jsonl`、`summary.json` 和 `summary.sqlite3`。
-4. 在根目录 `report-output/` 生成本地 Markdown 结果报告。
-5. 保留旧版多模型互评命令，同时新增 `assessment-run` 作为当前主流程。
+当前主流程评估的是“模型 + 参数 + 调用方式”的组合，不是模型的绝对人格。评分不使用模型裁判；默认使用本地规则，开启 embedding 后会额外使用参考答案语义相似度。
 
 ## 快速开始
 
-主流程使用本地 `.env`：先复制 `.env.example` 为 `.env`，在 `ARENA_MODELS` 中写入要评测的 alias，并为这些 alias 配好 `PROVIDER`、`BASE_URL`、`API_KEY`、`MODEL_NAME`。配置完成后，运行 `python -m arena assessment-run` 执行正式评测，再运行 `python -m arena assessment-report --input runs/latest` 生成或重建报告。
+复制 `.env.example` 为 `.env`，在 `ARENA_MODELS` 写入要评测的 alias，并为这些 alias 填好 `PROVIDER`、`BASE_URL`、`API_KEY`、`MODEL_NAME`。
 
-无需真实 API Key 时，可以先跑 fake provider 验证流程：
+- 运行正式评测：`python -m arena assessment-run`
+- 根据最近一次运行重新生成报告：`python -m arena assessment-report --input runs/latest`
 
-```powershell
-python -m arena assessment-run --provider fake
-python -m arena assessment-report --input runs/latest
+报告会生成到 `report-output/`。原始记录会保存到 `runs/<run_id>/`，最近一次运行会复制到 `runs/latest`。
+
+## CLI 命令速查
+
+- 正式评测主流程，会调用 `ARENA_MODELS` 中启用的模型并生成报告：`python -m arena assessment-run`
+- 从最近一次运行重新生成报告，不重新调用模型：`python -m arena assessment-report --input runs/latest`
+- 只检查配置，不发起模型请求：`python -m arena assessment-run --dry-run`
+- 使用 fake provider 离线跑通主流程，不需要真实 API Key：`python -m arena assessment-run --provider fake`
+- 离线跑通聊天模型和 embedding 语义评分全流程：`python -m arena assessment-run --provider fake --embedding-provider fake`
+- 对当前启用的所有模型各调用一次，检查连通性：`python -m arena probe-model`
+- 只探测一个模型 alias：`python -m arena probe-model --alias minimax_t01`
+- 用自定义自然语言提示词测试连通性：`python -m arena probe-model --alias minimax_t01 --prompt "你是什么模型"`
+- 排查时显示模型原始响应：`python -m arena probe-model --alias minimax_t01 --show-response`
+- 运行旧版互评流程；保留可用，但不是当前主流程：`python -m arena run --provider fake`
+
+## 主流程会发生什么
+
+```mermaid
+flowchart TD
+  A["读取 .env 和环境变量"] --> B["按 ARENA_MODELS 选择模型"]
+  B --> C["按 BASE_URL 分组调度"]
+  C --> D["不同请求入口并发，同一入口串行"]
+  D --> E["每个模型回答 4 个任务 x 3 个阶段"]
+  E --> F["解析模型输出的 JSON"]
+  F --> G["本地规则评分和响应拆解"]
+  G --> H{"是否启用 embedding"}
+  H -->|否| J["聚合总分和角色适配"]
+  H -->|是| I["字段拆解 -> 向量化 -> 余弦相似度 -> 语义分"]
+  I --> J
+  J --> K["写入 runs/<run_id>"]
+  K --> L["生成 report-output/*.md"]
 ```
 
-报告会写入根目录 `report-output/`，文件名格式为：
+默认每个模型会请求 12 次：4 个领域，每个领域 1 个基准题和 2 个扰动题。不同 `BASE_URL` 会并发；同一个 `BASE_URL` 会排队串行，避免多个模型同时打到同一个供应商网关。
+
+## 报告怎么看
+
+报告不是“谁绝对最聪明”的排行榜，而是“在当前任务、提示词、参数和调用方式下，哪个模型更适合什么角色”。
+
+- **总评分**：多个评分组的平均值，满分 10。
+- **失败项**：包括调用失败、JSON 解析失败。解析失败的轮次会在核心评分项中按 0 计入。
+- **领域评分**：个人生活、事业与成长、人际与关系、资源与风险四类任务的表现。
+- **过程质量**：问题框架、价值识别、备选方案、信息利用、推理、执行承诺。
+- **响应拆解**：约束锚定、价值拆解、权衡推理、信息追问、风险与可逆性、行动可执行性、变化适配、校准边界、方法多样性。
+- **参考答案语义相似度**：启用 embedding 后出现，表示回答字段与本地参考答案字段的语义接近程度。
+- **推荐角色**：给下游“民主集中制会议”分配模型角色使用，不是模型品牌标签。
+
+## 评估体系核心思想
+
+当前没有模型裁判，也没有 judge model。模型回答之后，程序只做本地计算；启用 embedding 时，也只是调用向量化模型把文本变成向量，不让另一个聊天模型打分。
+
+当前评分也不是纯关键词匹配：
+
+- `alternatives` 数量来自 JSON 数组长度，不是看文本里有没有 `1、2、3`。
+- JSON 完整性、行动计划、风险数量、优缺点数量、排序数量、可逆性、置信度都来自结构字段和计数。
+- 关键词只用于少数弱信号：坏方案规避、可接受方案匹配、扰动响应、方法指纹。
+- embedding 语义分只负责“和参考答案思路是否接近”，不替代格式、边界、扰动和行动计划规则。
+
+总分的思想是：
 
 ```text
-model-arena-YYYYMMDD-HHMMSS-参与模型名称.md
+总分 = 本地硬规则 + 过程质量 + 响应拆解 + 可选参考答案语义相似度 + 角色适配
 ```
 
-例如：
+## 向量化和余弦相似度
+
+embedding 会把一句话变成一串数字。例如：
 
 ```text
-report-output/model-arena-20260511-153000-gpt_gemini_claude_minimax_kimi_glm_qwen_mimo_seed_deepseek.md
+"优先选择低强度海边城市"
+→ [0.12, -0.03, 0.88, 0.41, ...]
 ```
 
-文件名中的模型名称会归一化到模型家族，不写供应商和版本号。
+如果模型是 768 维，就会返回 768 个数字。这 768 个数字可以理解为 768 维空间里的一个箭头。人类画不出来 768 维空间，但数学公式仍然成立。
 
-如果要只检查配置：
+`dimensions` 表示要返回多少维向量：
 
-```powershell
-python -m arena assessment-run --dry-run
-```
+- `ARENA_EMBEDDING_DIMENSIONS=None`：请求里不传维度，使用模型默认值。
+- `ARENA_EMBEDDING_DIMENSIONS=512`：请求里传 `dimensions=512`，要求服务返回 512 个数字。
 
-如果要对当前 `.env` 启用的所有模型各调用一次，检查连通性和正式评测 JSON 协议：
+当前缓存保存的是所有向量化过的文本片段，不只是参考答案。包括参考答案字段、模型回答字段，以及以后重复出现的相同文本。缓存键包含 provider、base_url、embedding 模型、维度、返回格式和文本 hash。
 
-```powershell
-python -m arena probe-model
-```
-
-该命令会读取与正式程序相同的 `.env` / 环境变量配置，对每个模型只请求一次，并发送正式评测使用的最小 JSON 协议探针。控制台默认不打印模型原始响应，只展示 alias、provider、模型名、调用成功或失败，以及失败错误。
-
-如果只想测试某一个模型：
-
-```powershell
-python -m arena probe-model --alias minimax_t01
-```
-
-如果只想做自然语言连通性测试，可以临时指定提示词；这种模式通常不会返回正式 JSON，因此不适合作为评测协议测试：
-
-```powershell
-python -m arena probe-model --alias minimax_t01 --prompt "你是什么模型"
-```
-
-如果确实需要排查模型原始输出，可以显式打开：
-
-```powershell
-python -m arena probe-model --alias minimax_t01 --show-response
-```
-
-旧版互评流程仍可运行：
-
-```powershell
-python -m arena run --provider fake
-```
-
-CLI 命令速查：
-
-- 正式评测主流程：`python -m arena assessment-run`
-- 从最近一次运行生成报告：`python -m arena assessment-report --input runs/latest`
-- 配置检查：`python -m arena assessment-run --dry-run`
-- 离线 fake 评测：`python -m arena assessment-run --provider fake`
-- 探针测试所有已启用模型：`python -m arena probe-model`
-- 探针测试单个模型：`python -m arena probe-model --alias minimax_t01`
-- 自然语言连通性测试：`python -m arena probe-model --alias minimax_t01 --prompt "你是什么模型"`
-- 排查时显示原始响应：`python -m arena probe-model --alias minimax_t01 --show-response`
-- 旧版互评流程：`python -m arena run --provider fake`
-
-## 配置真实模型
-
-复制 `.env.example` 为本地 `.env`，填入模型列表和密钥。真实 `.env` 已被 `.gitignore` 忽略。
+余弦相似度计算的是两个向量方向是否接近：
 
 ```text
-ARENA_MODELS=deepseek_chat,qwen_max
-ARENA_MODEL_DEEPSEEK_CHAT_PROVIDER=openai_compatible
-ARENA_MODEL_DEEPSEEK_CHAT_BASE_URL=https://api.example.com/v1
-ARENA_MODEL_DEEPSEEK_CHAT_API_KEY=sk-...
-ARENA_MODEL_DEEPSEEK_CHAT_MODEL_NAME=deepseek-chat
+cosine_similarity = A·B / (|A| * |B|)
+A·B = A1*B1 + A2*B2 + ... + A768*B768
 ```
 
-当前真实模型适配器支持 OpenAI-compatible Chat Completions 接口，也支持 Anthropic-compatible Messages 接口。MiniMax-M2.7 推荐使用 `anthropic_compatible`，程序会只取响应中的 `text` 内容块进入评分，避免把 `thinking` 内容块当作正式答案。
-
-支持的 provider：
-
-- `fake`：离线测试用，不访问外部模型。
-- `openai_compatible`：OpenAI Chat Completions 兼容接口，适用于支持 `/chat/completions` 的服务。
-- `anthropic_compatible`：Anthropic Messages 兼容接口，适用于支持 `/messages` 的服务。程序只取响应里的 `text` 内容块进入评分。
-
-每个模型可配置：
+二维情况下，这个公式可以从余弦定理推出来。设：
 
 ```text
-ARENA_MODELS=alias_a,alias_b
-ARENA_OUTPUT_DIR=runs
-ARENA_DISABLE_PROXY=true
-ARENA_MODEL_<ALIAS>_PROVIDER=openai_compatible
-ARENA_MODEL_<ALIAS>_BASE_URL=https://api.example.com/v1
-ARENA_MODEL_<ALIAS>_API_KEY=sk-...
-ARENA_MODEL_<ALIAS>_MODEL_NAME=model-name
-ARENA_MODEL_<ALIAS>_ROLE_HINT=
-ARENA_MODEL_<ALIAS>_TEMPERATURE=0.2
-ARENA_MODEL_<ALIAS>_MAX_TOKENS=None
-ARENA_MODEL_<ALIAS>_TOKEN_LIMIT_FIELD=auto
-ARENA_MODEL_<ALIAS>_TOP_P=None
-ARENA_MODEL_<ALIAS>_TIMEOUT_SECONDS=60
-ARENA_MODEL_<ALIAS>_RETRY_COUNT=0
-ARENA_MODEL_<ALIAS>_DISABLE_PROXY=false
+A = (x1, y1)
+B = (x2, y2)
 ```
 
-`.env.example` 提供多个供应商配置示例。程序只会遍历 `ARENA_MODELS` 中列出的 alias；其他已经写在 `.env` 里的模型配置不会被调用。要启用某个模型，把它的 alias 追加到 `ARENA_MODELS`，并填入 `BASE_URL`、`API_KEY`、`MODEL_NAME` 即可。`MODEL_NAME` 是供应商实际模型名称；旧字段 `NAME` 仍兼容，但不推荐继续使用。
+两个向量的差是：
 
-`TOKEN_LIMIT_FIELD` 用来适配不同 OpenAI-compatible 接口的输出上限字段，允许值为 `auto`、`max_tokens`、`max_completion_tokens`。`auto` 会对 MiniMax 模型或 MiniMax API 地址使用 `max_completion_tokens`，其他 OpenAI-compatible 模型默认使用 `max_tokens`。
-
-`ARENA_DISABLE_PROXY=true` 会让 OpenAI-compatible 请求绕过环境变量和 Windows 系统代理，适合排查本机代理导致的连接中断。也可以对单个模型设置 `ARENA_MODEL_<ALIAS>_DISABLE_PROXY=true` 覆盖全局配置。
-
-Kimi 使用 OpenAI-compatible 接口，当前模板配置为 `BASE_URL=https://api.moonshot.cn/v1`、`MODEL_NAME=kimi-k2.6`。Kimi K2.6 这类模型只接受固定温度，当前本地配置使用 `TEMPERATURE=1.0`。`TOP_P=None` 表示请求体里不传 `top_p`，由供应商使用默认值。当前 `.env.example` 已同步这些非敏感项，`ARENA_MODEL_KIMI_API_KEY` 留空。
-
-火山方舟豆包 Seed 使用 OpenAI-compatible 接口，当前模板配置为 `BASE_URL=https://ark.cn-beijing.volces.com/api/v3`、`MODEL_NAME=doubao-seed-2-0-lite-260428`。当前 `.env.example` 已同步这些非敏感项，`ARENA_MODEL_SEED_API_KEY` 留空；只有把 `seed` 追加到 `ARENA_MODELS` 后才会实际调用。
-
-阿里云百炼千问 Qwen 使用 OpenAI-compatible 接口，当前模板配置为 `BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1`、`MODEL_NAME=qwen3.6-flash`、`TOKEN_LIMIT_FIELD=max_tokens`。当前 `.env.example` 已同步这些非敏感项，`ARENA_MODEL_QWEN_API_KEY` 留空；要启用时把 `qwen` 追加到 `ARENA_MODELS`。
-
-硅基流动使用 OpenAI-compatible 接口，配置为 `BASE_URL=https://api.siliconflow.cn/v1`。模板里 `glm` 当前使用 `MODEL_NAME=Pro/zai-org/GLM-5.1`，`deepseek` 当前使用 `MODEL_NAME=deepseek-ai/DeepSeek-V4-Flash`，二者都使用 `TOKEN_LIMIT_FIELD=max_tokens`。如果后续从硅基流动模型列表选择了其他具体版本，只需要修改对应 `MODEL_NAME`；由于 `glm` 和 `deepseek` 共用同一个 `BASE_URL`，正式评测调度器会让它们在同一入口内串行排队，避免并发打到同一个聚合网关。
-
-小米 MiMo 使用 OpenAI-compatible 接口，配置为 `BASE_URL=https://api.xiaomimimo.com/v1`、默认 `MODEL_NAME=mimo-v2.5-pro`。MiMo 的 OpenAI 兼容示例使用 `max_completion_tokens`，因此模板设置 `TOKEN_LIMIT_FIELD=max_completion_tokens`。
-
-`MAX_TOKENS=None` 表示不限制模型输出 token。程序会把它解析为 Python 的 `None`，请求体里不会传输出上限字段，而不是传一个 JSON `null`。`TOP_P=None` 同理表示不传 `top_p`，使用模型服务默认值。空值也兼容同样语义；如果填写整数或小数，程序会按 provider 映射为对应参数。`minimax_t01`、`minimax_t04`、`minimax_t08` 用于同一个 minimax 模型的 0.1、0.4、0.8 三档温度测试，并默认使用 `anthropic_compatible`。使用 `--provider fake` 时会临时覆盖 provider，不需要真实密钥。
-
-## 模型能力评估主流程
-
-当前主流程是 `python -m arena assessment-run`，生成报告使用 `python -m arena assessment-report --input runs/latest`。旧版 `python -m arena run` 仍保留，但不是当前主要评测路径。
-
-当前流程：
-
-1. 读取 `ARENA_MODELS` 中列出的模型配置。
-2. 对每个模型独立运行内置任务：4 个领域，每个领域 1 道基准题，每题 2 个扰动，因此每个模型默认 12 次正式评测请求。
-3. 模型请求按 `BASE_URL` 分组调度。不同请求入口会并发运行；同一请求入口内部串行排队，适合多个模型共用同一个聚合网关地址的情况。
-4. 要求模型输出结构化 JSON，协议在 [src/arena/assessment/protocol.py](src/arena/assessment/protocol.py)。
-5. 测试题在 [src/arena/assessment/tasks.py](src/arena/assessment/tasks.py)，可以直接查看和修改。
-6. 程序化评分覆盖 JSON 完整性、备选方案数量、坏方案规避、专业边界、扰动响应和行动计划，逻辑在 [src/arena/assessment/scoring.py](src/arena/assessment/scoring.py)。
-7. 在不增加模型调用次数的前提下，程序会对每条响应做拆解评估，识别约束锚定、价值拆解、权衡推理、信息追问、风险与可逆性、行动可执行性、变化适配、校准边界和方法多样性，逻辑在 [src/arena/assessment/diagnostics.py](src/arena/assessment/diagnostics.py)。
-8. 报告会展示模型使用过的分析角度，例如阶段门/试点验证、权衡矩阵/优先级、约束检查、风险复盘、相关方对齐、信息缺口管理、用户价值识别和执行计划，渲染逻辑在 [src/arena/assessment/report.py](src/arena/assessment/report.py)。
-9. 保存 `events.jsonl`、`summary.json` 和 `summary.sqlite3`，存储逻辑在 [src/arena/assessment/store.py](src/arena/assessment/store.py)。
-10. 在根目录 `report-output/` 生成 Markdown 报告。
-
-当前 `assessment-run` 不调用模型裁判，也没有单独配置 judge model。总评分只来自本地程序化规则和响应拆解。旧版 `arena run` 会让模型互评彼此回答，但它不是当前主流程，结果也不进入 `assessment-run` 的总评分。
-
-## 评测体系参考
-
-当前没有导入外部题库、源码或数据集，只借鉴公开开源项目和公开评测框架的设计思想，并在本项目中改写为低成本、本地规则化拆解：
-
-- [Decision Quality](https://www.decisioneducation.org/principles-of-decision-quality/defining-decision-quality)：概念参考。当前 `Assessment Quality` 的六个维度参考其六要素：Helpful Frame、Clear Values、Creative Alternatives、Useful Information、Sound Reasoning、Commitment to Follow Through。本项目没有复制外部评分表或权重，而是把这些概念改写为本地程序化指标。
-- [HELM](https://github.com/stanford-crfm/helm)：开源协议 Apache-2.0。借鉴其“多维指标、透明证据、承认覆盖边界”的评测思路。
-- [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness)：开源协议 MIT。借鉴其“任务、指标、聚合结果分离”的工程结构。
-- [BIG-bench](https://github.com/google/BIG-bench)：开源协议 Apache-2.0。借鉴其“多任务覆盖”和成本可控子集的理念，但不直接使用题目数据。
-
-如果后续直接引入第三方题目或评分规则，需要逐项确认题库许可证、引用要求和是否允许修改后再提交到仓库。
-
-## 验证
-
-```powershell
-pytest
-python -m arena --help
-python -m arena assessment-run --dry-run
-python -m arena assessment-run --provider fake
-python -m arena assessment-report --input runs/latest
+```text
+A - B = (x1 - x2, y1 - y2)
 ```
 
+所以：
 
-## 文档地图
+```text
+|A - B|² = (x1 - x2)² + (y1 - y2)²
+         = x1² + y1² + x2² + y2² - 2(x1*x2 + y1*y2)
+```
 
-- [产品需求](docs/product/requirements.md)
-- [架构说明](docs/architecture/architecture.md)
-- [工作流](docs/operations/workflow.md)
-- [Agent 项目指令](docs/agents/AGENTS.md)
-- [项目规划](docs/plans/项目规划.md)
-- [评分规则说明](docs/quality/scoring.md)
-- [测试策略](docs/quality/test-strategy.md)
-- [MVP 计划](docs/plans/mvp-plan.md)
+而：
+
+```text
+|A|² = x1² + y1²
+|B|² = x2² + y2²
+```
+
+根据余弦定理：
+
+```text
+|A - B|² = |A|² + |B|² - 2|A||B|cos(θ)
+```
+
+把两种 `|A - B|²` 写法对比，会得到：
+
+```text
+x1*x2 + y1*y2 = |A||B|cos(θ)
+```
+
+左边就是点积 `A·B`，所以：
+
+```text
+A·B = |A||B|cos(θ)
+cos(θ) = A·B / (|A| * |B|)
+```
+
+这就是为什么这个算法叫“余弦相似度”。768 维只是把二维里的 `x1*x2 + y1*y2` 扩展成 768 项相乘再相加。
+
+文字不同不会导致维度不一致。维度不一致通常是因为用了不同 embedding 模型，或者一次传了 `dimensions=512`、另一次使用默认 768 维。维度不同的向量不能比较。
+
+余弦相似度会被映射成 0-10 分。默认：
+
+```text
+floor = 0.55
+ceiling = 0.85
+score = (similarity - floor) / (ceiling - floor) * 10
+```
+
+- 相似度 `<= 0.55` 记 0 分。
+- 相似度 `0.70` 约等于 5 分。
+- 相似度 `>= 0.85` 记 10 分。
+
+## Embedding 配置
+
+`.env.example` 默认使用硅基流动的 `netease-youdao/bce-embedding-base_v1`，默认关闭。填入 key 并打开开关后，主流程会加入语义评分。
+
+```text
+ARENA_EMBEDDING_ENABLED=false
+ARENA_EMBEDDING_PROVIDER=openai_compatible
+ARENA_EMBEDDING_BASE_URL=https://api.siliconflow.cn/v1
+ARENA_EMBEDDING_API_KEY=
+ARENA_EMBEDDING_MODEL=netease-youdao/bce-embedding-base_v1
+ARENA_EMBEDDING_DIMENSIONS=None
+ARENA_EMBEDDING_ENCODING_FORMAT=float
+ARENA_EMBEDDING_BATCH_SIZE=16
+ARENA_EMBEDDING_TIMEOUT_SECONDS=120
+ARENA_EMBEDDING_RETRY_COUNT=1
+ARENA_EMBEDDING_DISABLE_PROXY=false
+ARENA_EMBEDDING_CACHE_PATH=runs/embedding-cache.sqlite3
+ARENA_EMBEDDING_SIMILARITY_FLOOR=0.55
+ARENA_EMBEDDING_SIMILARITY_CEILING=0.85
+ARENA_EMBEDDING_ROLE_WEIGHT=0.35
+```
+
+SQLite 当前足够用于缓存向量，因为参考答案和回答片段数量不大。Chroma 更适合大量题库、Top-K 检索和复杂元数据过滤；当前代码没有接入 Chroma。
+
+## 会议角色
+
+| 角色 | 用途 |
+|---|---|
+| 通用主持专家 | 框定议题，维持讨论顺序。 |
+| 用户价值专家 | 识别真实目标、偏好和价值冲突。 |
+| 信息审查专家 | 区分事实、假设和未知信息。 |
+| 方案生成专家 | 提出多样化备选方案。 |
+| 权衡仲裁专家 | 比较收益、成本、机会成本和约束匹配度。 |
+| 风险专家 | 识别风险、止损条件、可逆性和预案。 |
+| 执行规划专家 | 把结论变成 7 天、30 天和复盘行动。 |
+| 红队专家 | 挑战推荐方案，寻找反例和失败模式。 |
+| 结论整合专家 | 整合多角色意见，形成最终建议和触发条件。 |
+
+## 核心代码地图
+
+- 任务定义：[src/arena/assessment/tasks.py](src/arena/assessment/tasks.py)
+- 输出协议：[src/arena/assessment/protocol.py](src/arena/assessment/protocol.py)
+- 主流程编排：[src/arena/assessment/evaluator.py](src/arena/assessment/evaluator.py)
+- 本地规则评分：[src/arena/assessment/scoring.py](src/arena/assessment/scoring.py)
+- 响应拆解：[src/arena/assessment/diagnostics.py](src/arena/assessment/diagnostics.py)
+- 参考答案：[src/arena/assessment/reference_answers.py](src/arena/assessment/reference_answers.py)
+- 语义评分：[src/arena/assessment/semantic_scoring.py](src/arena/assessment/semantic_scoring.py)
+- 向量调用和缓存：[src/arena/embeddings.py](src/arena/embeddings.py)
+- 报告生成：[src/arena/assessment/report.py](src/arena/assessment/report.py)
+- 配置解析：[src/arena/config.py](src/arena/config.py)
+
+## 输出文件
+
+```text
+runs/<run_id>/events.jsonl
+runs/<run_id>/summary.json
+runs/<run_id>/summary.sqlite3
+runs/embedding-cache.sqlite3
+report-output/model-arena-*.md
+```
+
+`.env`、API Key、本地运行记录和报告输出默认不应该提交到公开仓库。
 
 ---
 
 ## English Version
 
-MultiModelArena is a local tool for comparing AI model capabilities. Users configure model providers, model names, base URLs, and API keys through environment variables, run one evaluation pass, and receive a Markdown report. The current main flow focuses on personal-action decision tasks and uses structured tasks, perturbations, local rule scoring, and response diagnostics. Model-judge scores are not used as the core score.
+MultiModelArena is a local multi-model evaluation tool. It reads model configuration from `.env`, asks multiple models to answer the same structured decision tasks, and generates a Markdown report showing each model's score, failures, behavior profile, and suitable meeting roles.
 
-## Project Goals
-
-- Run multiple models through structured personal-action tasks and perturbation rounds.
-- Produce comparable and traceable model conclusions. The total score comes from local programmatic rules, not from a model judge.
-- Generate Markdown reports with domain scores, process-quality scores inspired by Decision Quality, response diagnostics, behavioral fingerprints, role fit, evidence snippets, and links to raw local records.
-- Let users switch model providers and enabled model aliases through environment variables without committing secrets.
-
-## Tech Stack
-
-- Backend and orchestration: Python.
-- Report output: local Markdown files.
-- Storage: SQLite plus JSONL raw event records.
-- Verification: pytest, CLI end-to-end runs, and report-content checks.
-- Configuration: `.env` environment variables. The repository only commits `.env.example`.
-
-## Current Stage
-
-The repository has implemented the MVP local loop:
-
-1. Load model configuration from environment variables or `.env`.
-2. Run model assessment with fake provider, OpenAI-compatible provider, or Anthropic-compatible provider.
-3. Save `events.jsonl`, `summary.json`, and `summary.sqlite3`.
-4. Generate a local Markdown report under root-level `report-output/`.
-5. Keep the legacy multi-model peer-review command while using `assessment-run` as the current main flow.
+The current main flow evaluates the combination of model, parameters, and calling method. It does not claim to measure a model's absolute personality. Scoring does not use a model judge. By default, it uses local rules; when embedding is enabled, it also uses reference-answer semantic similarity.
 
 ## Quick Start
 
-The main flow uses local `.env`: copy `.env.example` to `.env`, put the enabled aliases in `ARENA_MODELS`, and configure `PROVIDER`, `BASE_URL`, `API_KEY`, and `MODEL_NAME` for those aliases. After configuration, run `python -m arena assessment-run` for the formal assessment, then run `python -m arena assessment-report --input runs/latest` to generate or rebuild the report.
+Copy `.env.example` to `.env`, put the model aliases to evaluate in `ARENA_MODELS`, and fill in `PROVIDER`, `BASE_URL`, `API_KEY`, and `MODEL_NAME` for those aliases.
 
-Run without real API keys by using the fake provider:
+- Run the formal assessment: `python -m arena assessment-run`
+- Regenerate the report from the latest run: `python -m arena assessment-report --input runs/latest`
 
-```powershell
-python -m arena assessment-run --provider fake
-python -m arena assessment-report --input runs/latest
+Reports are written to `report-output/`. Raw records are saved under `runs/<run_id>/`, and the most recent run is copied to `runs/latest`.
+
+## CLI Command Quick Reference
+
+- Run the formal main assessment flow. It calls the models enabled in `ARENA_MODELS` and generates a report: `python -m arena assessment-run`
+- Regenerate a report from the latest run without calling models again: `python -m arena assessment-report --input runs/latest`
+- Validate configuration only, without sending model requests: `python -m arena assessment-run --dry-run`
+- Run the main flow offline through the fake provider, without real API keys: `python -m arena assessment-run --provider fake`
+- Run both chat and embedding semantic scoring fully offline: `python -m arena assessment-run --provider fake --embedding-provider fake`
+- Call every enabled model once to check connectivity: `python -m arena probe-model`
+- Probe only one model alias: `python -m arena probe-model --alias minimax_t01`
+- Use a custom natural-language prompt for connectivity testing: `python -m arena probe-model --alias minimax_t01 --prompt "你是什么模型"`
+- Show the raw model response for debugging: `python -m arena probe-model --alias minimax_t01 --show-response`
+- Run the legacy peer-review flow. It remains available, but it is not the current main flow: `python -m arena run --provider fake`
+
+## What The Main Flow Does
+
+```mermaid
+flowchart TD
+  A["Read .env and environment variables"] --> B["Select models from ARENA_MODELS"]
+  B --> C["Group requests by BASE_URL"]
+  C --> D["Different endpoints run concurrently; same endpoint runs sequentially"]
+  D --> E["Each model answers 4 tasks x 3 phases"]
+  E --> F["Parse model JSON output"]
+  F --> G["Local rule scoring and response diagnostics"]
+  G --> H{"Embedding enabled?"}
+  H -->|No| J["Aggregate total score and role fit"]
+  H -->|Yes| I["Segment fields -> embed -> cosine similarity -> semantic score"]
+  I --> J
+  J --> K["Write runs/<run_id>"]
+  K --> L["Generate report-output/*.md"]
 ```
 
-Reports are written to `report-output/` with names like:
+By default, each model receives 12 requests: 4 domains, each with 1 baseline task and 2 perturbation tasks. Different `BASE_URL` values run concurrently. Models sharing the same `BASE_URL` are queued sequentially to avoid hitting the same provider gateway in parallel.
+
+## How To Read The Report
+
+The report is not a ranking of who is absolutely smartest. It answers: under the current tasks, prompt, parameters, and calling method, which model is better suited for which role?
+
+- **Total score**: the average of several score groups, out of 10.
+- **Failures**: call failures and JSON parse failures. Parse-failed rounds count as 0 in core score items.
+- **Domain scores**: performance on personal life, career and growth, relationships, and resources and risk.
+- **Process quality**: problem framing, value detection, alternatives, information use, reasoning, and follow-through.
+- **Response diagnostics**: constraint grounding, value decomposition, tradeoff reasoning, information seeking, risk and reversibility, execution specificity, adaptation to change, calibration boundary, and method diversity.
+- **Reference-answer semantic similarity**: appears when embedding is enabled; it measures how semantically close response fields are to local reference-answer fields.
+- **Recommended roles**: used for assigning models in a downstream democratic-centralism-style meeting. They are not brand labels.
+
+## Core Evaluation Philosophy
+
+There is no model judge and no judge model. After a model answers, the program only performs local computation. When embedding is enabled, it calls an embedding model to turn text into vectors, but it still does not ask another chat model to score the answer.
+
+The current scoring is not pure keyword matching:
+
+- The number of `alternatives` comes from the JSON array length, not from textual numbering like `1, 2, 3`.
+- JSON completeness, action plans, risk counts, pros/cons counts, ranking counts, reversibility, and confidence all come from structured fields and counting.
+- Keywords are only weak signals in a few places: bad-option avoidance, acceptable-option matching, perturbation response, and method fingerprints.
+- The embedding semantic score only measures whether the answer is close to reference-answer reasoning. It does not replace format, boundary, perturbation, or action-plan rules.
+
+The total score is conceptually:
 
 ```text
-model-arena-YYYYMMDD-HHMMSS-model_families.md
+Total score = local hard rules + process quality + response diagnostics + optional reference-answer semantic similarity + role fit
 ```
 
-Check configuration only:
+## Embeddings And Cosine Similarity
 
-```powershell
-python -m arena assessment-run --dry-run
-```
-
-Probe all enabled models once with the same configuration used by the formal program:
-
-```powershell
-python -m arena probe-model
-```
-
-Probe one model:
-
-```powershell
-python -m arena probe-model --alias minimax_t01
-```
-
-Run a natural-language connectivity probe:
-
-```powershell
-python -m arena probe-model --alias minimax_t01 --prompt "What model are you?"
-```
-
-Print raw probe responses only when debugging:
-
-```powershell
-python -m arena probe-model --alias minimax_t01 --show-response
-```
-
-The legacy peer-review flow can still run:
-
-```powershell
-python -m arena run --provider fake
-```
-
-CLI command quick reference:
-
-- Formal assessment flow: `python -m arena assessment-run`
-- Generate report from latest run: `python -m arena assessment-report --input runs/latest`
-- Configuration check: `python -m arena assessment-run --dry-run`
-- Offline fake assessment: `python -m arena assessment-run --provider fake`
-- Probe all enabled models: `python -m arena probe-model`
-- Probe one model: `python -m arena probe-model --alias minimax_t01`
-- Natural-language connectivity probe: `python -m arena probe-model --alias minimax_t01 --prompt "What model are you?"`
-- Show raw probe response for debugging: `python -m arena probe-model --alias minimax_t01 --show-response`
-- Legacy peer-review flow: `python -m arena run --provider fake`
-
-## Model Configuration
-
-Copy `.env.example` to local `.env`, then fill in model aliases and API keys. Real `.env` is ignored by Git.
-
-Supported providers:
-
-- `fake`: offline testing provider.
-- `openai_compatible`: OpenAI Chat Completions-compatible `/chat/completions` API.
-- `anthropic_compatible`: Anthropic Messages-compatible `/messages` API. The program only uses `text` content blocks for scoring.
-
-Each model can use these fields:
+An embedding turns a sentence into a list of numbers. For example:
 
 ```text
-ARENA_MODELS=alias_a,alias_b
-ARENA_OUTPUT_DIR=runs
-ARENA_DISABLE_PROXY=true
-ARENA_MODEL_<ALIAS>_PROVIDER=openai_compatible
-ARENA_MODEL_<ALIAS>_BASE_URL=https://api.example.com/v1
-ARENA_MODEL_<ALIAS>_API_KEY=sk-...
-ARENA_MODEL_<ALIAS>_MODEL_NAME=model-name
-ARENA_MODEL_<ALIAS>_ROLE_HINT=
-ARENA_MODEL_<ALIAS>_TEMPERATURE=0.2
-ARENA_MODEL_<ALIAS>_MAX_TOKENS=None
-ARENA_MODEL_<ALIAS>_TOKEN_LIMIT_FIELD=auto
-ARENA_MODEL_<ALIAS>_TOP_P=None
-ARENA_MODEL_<ALIAS>_TIMEOUT_SECONDS=60
-ARENA_MODEL_<ALIAS>_RETRY_COUNT=0
-ARENA_MODEL_<ALIAS>_DISABLE_PROXY=false
+"Prioritize a low-intensity seaside city"
+→ [0.12, -0.03, 0.88, 0.41, ...]
 ```
 
-Only aliases listed in `ARENA_MODELS` are called. Other configured blocks in `.env` are ignored until their aliases are added to `ARENA_MODELS`. `MODEL_NAME` is the provider-side model name. The legacy `NAME` field remains supported but is not recommended.
+If the model returns 768 dimensions, the output contains 768 numbers. These numbers can be understood as an arrow in a 768-dimensional space. Humans cannot draw that space, but the math still works.
 
-`TOKEN_LIMIT_FIELD` can be `auto`, `max_tokens`, or `max_completion_tokens`. `MAX_TOKENS=None` or a blank value means no output-token limit is sent in the request body. `TOP_P=None` has the same meaning for `top_p`: the request omits it and lets the provider use its default.
+`dimensions` means how many numbers the vector should contain:
 
-`ARENA_DISABLE_PROXY=true` disables system and environment proxies for model requests. It can be overridden per model with `ARENA_MODEL_<ALIAS>_DISABLE_PROXY=true`.
+- `ARENA_EMBEDDING_DIMENSIONS=None`: do not send a dimensions parameter; use the model default.
+- `ARENA_EMBEDDING_DIMENSIONS=512`: send `dimensions=512`; ask the service to return 512 numbers.
 
-Kimi uses the OpenAI-compatible API. The current template uses `BASE_URL=https://api.moonshot.cn/v1` and `MODEL_NAME=kimi-k2.6`. For Kimi K2.6-style models that only allow fixed temperature, set `TEMPERATURE` to the provider-allowed value; the local template uses `TEMPERATURE=1.0` and `TOP_P=None`.
+The current cache stores every text segment that has been embedded, not just reference answers. That includes reference-answer fields, model-response fields, and any identical text that appears again later. The cache key includes provider, base URL, embedding model, dimensions, return format, and text hash.
 
-Volcengine Ark Doubao Seed uses the OpenAI-compatible API with `BASE_URL=https://ark.cn-beijing.volces.com/api/v3` and `MODEL_NAME=doubao-seed-2-0-lite-260428`.
+Cosine similarity measures whether two vector directions are close:
 
-Alibaba Bailian Qwen uses the OpenAI-compatible API with `BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1`, current `MODEL_NAME=qwen3.6-flash`, and `TOKEN_LIMIT_FIELD=max_tokens`.
-
-SiliconFlow uses the OpenAI-compatible API with `BASE_URL=https://api.siliconflow.cn/v1`. The template sets `glm` to `MODEL_NAME=Pro/zai-org/GLM-5.1` and `deepseek` to `MODEL_NAME=deepseek-ai/DeepSeek-V4-Flash`, both with `TOKEN_LIMIT_FIELD=max_tokens`. If you pick another model ID from SiliconFlow, update only `MODEL_NAME`. Because both aliases share the same `BASE_URL`, the assessment scheduler queues them sequentially behind that endpoint.
-
-Xiaomi MiMo uses the OpenAI-compatible API with `BASE_URL=https://api.xiaomimimo.com/v1` and default `MODEL_NAME=mimo-v2.5-pro`. Its OpenAI-compatible example uses `max_completion_tokens`, so the template sets `TOKEN_LIMIT_FIELD=max_completion_tokens`.
-
-## Assessment Flow
-
-The current main flow is `python -m arena assessment-run`; report generation is `python -m arena assessment-report --input runs/latest`. The legacy `python -m arena run` command is not the current main assessment path.
-
-Current flow:
-
-1. Load aliases from `ARENA_MODELS`.
-2. Run built-in tasks independently for every enabled model: 4 domains, 1 baseline task per domain, and 2 perturbations per task. This is 12 formal assessment requests per model by default.
-3. Requests are scheduled by `BASE_URL`. Different request endpoints run concurrently; models sharing the same endpoint are queued sequentially.
-4. Ask models to output structured JSON. The protocol lives in [src/arena/assessment/protocol.py](src/arena/assessment/protocol.py).
-5. Assessment tasks live in [src/arena/assessment/tasks.py](src/arena/assessment/tasks.py).
-6. Programmatic scoring covers JSON completeness, alternative count, bad-option avoidance, professional boundary, perturbation response, and action planning. The logic lives in [src/arena/assessment/scoring.py](src/arena/assessment/scoring.py).
-7. Without increasing model calls, the program decomposes each response into constraint grounding, value decomposition, tradeoff reasoning, information seeking, risk and reversibility, execution specificity, adaptation to change, calibration boundary, and method diversity. The logic lives in [src/arena/assessment/diagnostics.py](src/arena/assessment/diagnostics.py).
-8. The report shows the model's analysis-angle fingerprint, including stage-gate or pilot validation, tradeoff matrix or prioritization, constraint checking, risk review, stakeholder alignment, information-gap management, user-value identification, and execution planning. Rendering lives in [src/arena/assessment/report.py](src/arena/assessment/report.py).
-9. Storage writes `events.jsonl`, `summary.json`, and `summary.sqlite3`; storage code lives in [src/arena/assessment/store.py](src/arena/assessment/store.py).
-10. Markdown reports are written to `report-output/`.
-
-The current `assessment-run` flow does not call a model judge and has no separate judge-model configuration. The total score comes only from local rules and response diagnostics. The legacy `arena run` flow can make models review each other, but it is separate from `assessment-run` and does not affect its total score.
-
-## Evaluation References
-
-No third-party benchmark tasks, source code, or datasets are imported. The project only adapts public evaluation ideas into local, low-cost, rule-based diagnostics:
-
-- [Decision Quality](https://www.decisioneducation.org/principles-of-decision-quality/defining-decision-quality/): conceptual reference. `Assessment Quality` is inspired by six elements: Helpful Frame, Clear Values, Creative Alternatives, Useful Information, Sound Reasoning, and Commitment to Follow Through. This project does not copy external scoring sheets or weights.
-- [HELM](https://github.com/stanford-crfm/helm): Apache-2.0. We borrow the ideas of multi-metric evaluation, transparent evidence, and explicit coverage limits.
-- [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness): MIT. We borrow the engineering separation between tasks, metrics, and aggregation.
-- [BIG-bench](https://github.com/google/BIG-bench): Apache-2.0. We borrow the idea of broad task coverage with cost-controlled subsets, but do not directly use its task data.
-
-Any future direct import of third-party tasks or scoring rules must first verify the license, attribution requirements, and modification rights.
-
-## Verification
-
-```powershell
-pytest
-python -m arena --help
-python -m arena assessment-run --dry-run
-python -m arena assessment-run --provider fake
-python -m arena assessment-report --input runs/latest
+```text
+cosine_similarity = A·B / (|A| * |B|)
+A·B = A1*B1 + A2*B2 + ... + A768*B768
 ```
 
-## Document Map
+In two dimensions, this formula can be derived from the law of cosines. Let:
 
-- [Product Requirements](docs/product/requirements.md)
-- [Architecture](docs/architecture/architecture.md)
-- [Workflow](docs/operations/workflow.md)
-- [Agent Instructions](docs/agents/AGENTS.md)
-- [Project Plan](docs/plans/项目规划.md)
-- [Scoring Rules](docs/quality/scoring.md)
-- [Test Strategy](docs/quality/test-strategy.md)
-- [MVP Plan](docs/plans/mvp-plan.md)
+```text
+A = (x1, y1)
+B = (x2, y2)
+```
+
+The difference between the vectors is:
+
+```text
+A - B = (x1 - x2, y1 - y2)
+```
+
+So:
+
+```text
+|A - B|² = (x1 - x2)² + (y1 - y2)²
+         = x1² + y1² + x2² + y2² - 2(x1*x2 + y1*y2)
+```
+
+And:
+
+```text
+|A|² = x1² + y1²
+|B|² = x2² + y2²
+```
+
+By the law of cosines:
+
+```text
+|A - B|² = |A|² + |B|² - 2|A||B|cos(θ)
+```
+
+Comparing the two forms of `|A - B|²` gives:
+
+```text
+x1*x2 + y1*y2 = |A||B|cos(θ)
+```
+
+The left side is the dot product `A·B`, so:
+
+```text
+A·B = |A||B|cos(θ)
+cos(θ) = A·B / (|A| * |B|)
+```
+
+This is why the algorithm is called cosine similarity. A 768-dimensional vector simply extends the two-dimensional `x1*x2 + y1*y2` into 768 multiply-and-add terms.
+
+Different text does not cause different dimensions. Dimension mismatch usually happens because different embedding models were used, or one call used `dimensions=512` while another used the default 768 dimensions. Vectors with different dimensions cannot be compared.
+
+Cosine similarity is mapped to a 0-10 score. Defaults:
+
+```text
+floor = 0.55
+ceiling = 0.85
+score = (similarity - floor) / (ceiling - floor) * 10
+```
+
+- Similarity `<= 0.55` becomes 0.
+- Similarity `0.70` is about 5.
+- Similarity `>= 0.85` becomes 10.
+
+## Embedding Configuration
+
+`.env.example` defaults to SiliconFlow `netease-youdao/bce-embedding-base_v1`, disabled by default. After adding an API key and enabling the switch, the main flow includes semantic scoring.
+
+```text
+ARENA_EMBEDDING_ENABLED=false
+ARENA_EMBEDDING_PROVIDER=openai_compatible
+ARENA_EMBEDDING_BASE_URL=https://api.siliconflow.cn/v1
+ARENA_EMBEDDING_API_KEY=
+ARENA_EMBEDDING_MODEL=netease-youdao/bce-embedding-base_v1
+ARENA_EMBEDDING_DIMENSIONS=None
+ARENA_EMBEDDING_ENCODING_FORMAT=float
+ARENA_EMBEDDING_BATCH_SIZE=16
+ARENA_EMBEDDING_TIMEOUT_SECONDS=120
+ARENA_EMBEDDING_RETRY_COUNT=1
+ARENA_EMBEDDING_DISABLE_PROXY=false
+ARENA_EMBEDDING_CACHE_PATH=runs/embedding-cache.sqlite3
+ARENA_EMBEDDING_SIMILARITY_FLOOR=0.55
+ARENA_EMBEDDING_SIMILARITY_CEILING=0.85
+ARENA_EMBEDDING_ROLE_WEIGHT=0.35
+```
+
+SQLite is enough for the current vector cache because the number of reference answers and response segments is small. Chroma is better for large benchmark sets, Top-K retrieval, and complex metadata filtering; it is not currently integrated.
+
+## Meeting Roles
+
+| Role | Purpose |
+|---|---|
+| General Facilitator | Frame the issue and maintain discussion order. |
+| User Value Expert | Identify real goals, preferences, and value conflicts. |
+| Information Review Expert | Separate facts, assumptions, and unknowns. |
+| Option Generation Expert | Generate diverse alternatives. |
+| Tradeoff Arbitration Expert | Compare benefits, costs, opportunity costs, and constraint fit. |
+| Risk Expert | Identify risks, stop-loss conditions, reversibility, and contingency plans. |
+| Execution Planning Expert | Turn conclusions into 7-day, 30-day, and review actions. |
+| Red-Team Expert | Challenge recommendations and look for counterexamples and failure modes. |
+| Conclusion Integration Expert | Integrate role opinions into final recommendations and trigger conditions. |
+
+## Core Code Map
+
+- Tasks: [src/arena/assessment/tasks.py](src/arena/assessment/tasks.py)
+- Output protocol: [src/arena/assessment/protocol.py](src/arena/assessment/protocol.py)
+- Main orchestration: [src/arena/assessment/evaluator.py](src/arena/assessment/evaluator.py)
+- Local rule scoring: [src/arena/assessment/scoring.py](src/arena/assessment/scoring.py)
+- Response diagnostics: [src/arena/assessment/diagnostics.py](src/arena/assessment/diagnostics.py)
+- Reference answers: [src/arena/assessment/reference_answers.py](src/arena/assessment/reference_answers.py)
+- Semantic scoring: [src/arena/assessment/semantic_scoring.py](src/arena/assessment/semantic_scoring.py)
+- Embedding calls and cache: [src/arena/embeddings.py](src/arena/embeddings.py)
+- Report generation: [src/arena/assessment/report.py](src/arena/assessment/report.py)
+- Configuration parsing: [src/arena/config.py](src/arena/config.py)
+
+## Output Files
+
+```text
+runs/<run_id>/events.jsonl
+runs/<run_id>/summary.json
+runs/<run_id>/summary.sqlite3
+runs/embedding-cache.sqlite3
+report-output/model-arena-*.md
+```
+
+`.env`, API keys, local run records, and report outputs should not be committed to a public repository by default.

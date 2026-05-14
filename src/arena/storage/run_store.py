@@ -1,3 +1,5 @@
+﻿# 保存旧版评测运行记录。
+# 输入：运行摘要；输出：JSON、JSONL 和 SQLite 文件。
 from __future__ import annotations
 
 import json

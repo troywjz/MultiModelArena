@@ -1,3 +1,5 @@
+﻿# 检查 OpenAI 兼容模型调用适配器。
+# 输入：模拟 HTTP 响应和模型配置；输出：pytest 断言结果。
 import json
 import urllib.request
 

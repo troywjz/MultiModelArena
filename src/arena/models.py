@@ -1,3 +1,5 @@
+﻿# 定义通用配置和运行数据结构。
+# 输入：配置和模型响应数据；输出：数据对象。
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -39,6 +41,24 @@ class ModelConfig:
     timeout_seconds: float = 60.0
     retry_count: int = 0
     disable_proxy: bool = False
+
+
+@dataclass(frozen=True)
+class EmbeddingConfig:
+    provider: str = "openai_compatible"
+    base_url: str = "https://api.siliconflow.cn/v1"
+    api_key: str = ""
+    model_name: str = "netease-youdao/bce-embedding-base_v1"
+    dimensions: int | None = None
+    encoding_format: str = "float"
+    batch_size: int = 16
+    timeout_seconds: float = 120.0
+    retry_count: int = 1
+    disable_proxy: bool = False
+    cache_path: Path = Path("runs/embedding-cache.sqlite3")
+    similarity_floor: float = 0.55
+    similarity_ceiling: float = 0.85
+    role_weight: float = 0.35
 
 
 @dataclass(frozen=True)

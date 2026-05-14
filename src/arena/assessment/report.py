@@ -1,3 +1,5 @@
+﻿# 生成当前评测 Markdown 报告。
+# 输入：summary.json 数据；输出：Markdown 报告文件。
 from __future__ import annotations
 
 from collections import defaultdict
@@ -56,6 +58,16 @@ METHOD_FINGERPRINT_LABELS = {
     "执行计划": "执行计划",
 }
 
+SEMANTIC_SCORE_LABELS = {
+    "问题框架": "问题框架",
+    "价值识别": "价值识别",
+    "备选方案": "备选方案",
+    "推荐与排序": "推荐与排序",
+    "风险与复盘": "风险与复盘",
+    "行动计划": "行动计划",
+    "专业边界": "专业边界",
+}
+
 PROVIDER_LABELS = {
     "fake": "离线模拟（fake）",
     "openai_compatible": "OpenAI 兼容接口（openai_compatible）",
@@ -107,7 +119,7 @@ def _render(summary: dict[str, Any]) -> str:
         f"- 基准任务数：{len(tasks)}",
         f"- 扰动脚本数：{sum(len(task['mutations']) for task in tasks)}",
         "",
-        "> 本报告总评分仅来自程序化规则，不包含模型裁判评分。个人生活、事业与成长、人际与关系、资源与风险是评测领域，不代表当前项目替用户做真实决策。",
+        _scoring_notice(results),
         "",
         "## 总体结论",
         "",
@@ -199,6 +211,12 @@ def _with_current_scoring(results: list[dict[str, Any]], tasks: list[dict[str, A
             if isinstance(response, dict)
         ]
         score_assessment_result(model_result, task_objects)
+        if isinstance(result.get("semantic_scores"), dict) and result.get("semantic_scores"):
+            model_result.semantic_scores = dict(result.get("semantic_scores", {}))
+            model_result.semantic_role_fit = dict(result.get("semantic_role_fit", {})) if isinstance(result.get("semantic_role_fit"), dict) else {}
+            model_result.semantic_notes = list(result.get("semantic_notes", [])) if isinstance(result.get("semantic_notes"), list) else []
+            if isinstance(result.get("role_fit"), dict):
+                model_result.role_fit = dict(result.get("role_fit", {}))
         item = dict(result)
         item.update(model_result.to_dict())
         enriched.append(item)
@@ -288,7 +306,11 @@ def _task_view(task: dict[str, Any]) -> SimpleNamespace:
 def _build_report_summary(results: list[dict[str, Any]], fallback: str) -> str:
     if not results:
         return _normalize_report_wording(fallback)
-    lines = ["本次总评分仅来自程序化规则，不包含模型裁判。"]
+    lines = [
+        "本次总评分来自本地规则和参考答案语义相似度，不包含模型裁判。"
+        if _has_semantic_scores(results)
+        else "本次总评分仅来自本地程序化规则，不包含模型裁判。"
+    ]
     for result in results:
         lines.append(
             f"{_display_model_name(result)}: 总分 {result['total_score']}/10，建议角色 {_role_names(result, 2)}"
@@ -305,7 +327,8 @@ def _scoring_method_section() -> str:
             "2. 再做程序化规则评分，检查字段完整性、备选方案数量、坏方案规避、专业边界、行动计划、可接受方案匹配和扰动响应。",
             "3. 同时计算过程质量（Assessment Quality），参考 Decision Quality（决策质量）概念，判断问题框架、价值识别、备选方案、信息利用、推理和执行承诺。",
             "4. 然后做响应拆解评估，识别约束锚定、价值拆解、权衡推理、信息追问、风险与可逆性、行动可执行性、变化适配、校准边界和方法多样性。",
-            "5. 最后先分别计算领域分、过程质量分、程序化规则分、响应拆解分和角色适配分的组内均分，再对这些组均分取平均，得到总评分；每个子项和每个分组满分都是 10；不调用模型裁判。",
+            "5. 如果启用了 embedding（向量化）语义评分，程序会把模型回答和本地参考答案按字段拆解后计算 cosine similarity（余弦相似度），再映射为 0-10 分；这个过程不调用模型裁判。",
+            "6. 最后先分别计算领域分、过程质量分、程序化规则分、响应拆解分、参考答案语义分和角色适配分的组内均分，再对这些组均分取平均，得到总评分；每个子项和每个分组满分都是 10。",
             "",
             "完整公式见 [docs/quality/scoring.md](docs/quality/scoring.md)。",
             "",
@@ -320,9 +343,20 @@ def _scoring_method_section() -> str:
             "| 扰动响应 | 扰动后推荐发生变化、命中预期方向、避开应规避方向，三项取平均。 |",
             "| 过程质量 | 根据问题框架、价值、备选方案、信息、推理、执行六组结构化信号打分。 |",
             "| 响应拆解 | 根据具体约束、数字、利弊、风险、可逆性、行动细节、置信度和方法关键词打分。 |",
+            "| 参考答案语义相似度 | 启用 embedding 时，把回答字段和多个参考答案字段向量化，取最高余弦相似度并映射为 0-10 分。 |",
             "| 方法覆盖评分 | 先统计八类方法关键词命中次数，再按“命中次数 / 2”截断到 1，换算成 0-10 分；原始命中次数另表展示，不当作分数。 |",
         ]
     )
+
+
+def _scoring_notice(results: list[dict[str, Any]]) -> str:
+    if _has_semantic_scores(results):
+        return "> 本报告总评分来自本地程序化规则和参考答案语义相似度，不包含模型裁判评分。个人生活、事业与成长、人际与关系、资源与风险是评测领域，不代表当前项目替用户做真实决策。"
+    return "> 本报告总评分仅来自本地程序化规则，不包含模型裁判评分。个人生活、事业与成长、人际与关系、资源与风险是评测领域，不代表当前项目替用户做真实决策。"
+
+
+def _has_semantic_scores(results: list[dict[str, Any]]) -> bool:
+    return any(bool(result.get("semantic_scores")) for result in results)
 
 
 def _normalize_report_wording(text: str) -> str:
@@ -390,6 +424,14 @@ def _model_section(result: dict[str, Any]) -> list[str]:
         "#### 响应拆解评估",
         "",
         _diagnostic_table(result.get("diagnostic_scores", {})),
+        "",
+        "#### 参考答案语义相似度",
+        "",
+        _score_table(result.get("semantic_scores", {}), SEMANTIC_SCORE_LABELS),
+        "",
+        "#### 语义评分说明",
+        "",
+        _semantic_notes(result),
         "",
         "#### 方法与分析角度指纹",
         "",
@@ -494,6 +536,19 @@ def _diagnostic_notes(result: dict[str, Any]) -> str:
     if not notes:
         return "无"
     return "\n".join(f"- {item}" for item in notes[:6])
+
+
+def _semantic_notes(result: dict[str, Any]) -> str:
+    notes = result.get("semantic_notes", [])
+    if not notes:
+        return "未启用或无可用语义评分。"
+    lines = [f"- {item}" for item in notes[:4]]
+    semantic_roles = result.get("semantic_role_fit", {})
+    if isinstance(semantic_roles, dict) and semantic_roles:
+        top_roles = _top_items(semantic_roles, 3)
+        role_text = "、".join(f"{role}({score})" for role, score in top_roles)
+        lines.append(f"- 语义角色适配最高：{role_text}。")
+    return "\n".join(lines)
 
 
 def _inline_scores(scores: dict[str, float], limit: int) -> str:

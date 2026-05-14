@@ -1,3 +1,5 @@
+﻿# 构建模型供应商适配器。
+# 输入：模型配置；输出：具体 Provider 实例。
 from __future__ import annotations
 
 from arena.models import ModelConfig

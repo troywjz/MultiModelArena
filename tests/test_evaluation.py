@@ -1,3 +1,5 @@
+﻿# 检查旧版评测流程。
+# 输入：fake 模型配置；输出：pytest 断言结果。
 from arena.config import ArenaConfig
 from arena.evaluation import Evaluator
 from arena.models import ModelConfig, Task

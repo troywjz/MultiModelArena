@@ -1,3 +1,5 @@
+﻿# 提供 fake 模型的固定回答。
+# 输入：提示词文本；输出：模拟模型回答。
 from __future__ import annotations
 
 import json

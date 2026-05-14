@@ -1,3 +1,5 @@
+﻿# 脱敏报告和日志中的秘密。
+# 输入：文本和密钥列表；输出：脱敏文本。
 from __future__ import annotations
 
 import re

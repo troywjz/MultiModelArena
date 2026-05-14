@@ -1,3 +1,5 @@
+﻿# 定义 arena 命令行入口。
+# 输入：命令行参数；输出：控制台信息和退出码。
 from __future__ import annotations
 
 import argparse
@@ -28,6 +30,7 @@ def main(argv: list[str] | None = None) -> int:
 
     assessment_run_parser = subparsers.add_parser("assessment-run", help="运行模型能力程序化评估")
     assessment_run_parser.add_argument("--provider", choices=["fake"], help="临时覆盖所有模型为 fake provider")
+    assessment_run_parser.add_argument("--embedding-provider", choices=["fake"], help="临时启用 fake embedding，离线测试语义评分")
     assessment_run_parser.add_argument("--dry-run", action="store_true", help="只解析配置，不发起模型调用")
     assessment_run_parser.add_argument("--no-dotenv", action="store_true", help="不读取当前目录 .env")
 
@@ -80,9 +83,7 @@ def main(argv: list[str] | None = None) -> int:
 def _run(args: argparse.Namespace) -> int:
     config = load_config(use_dotenv=not args.no_dotenv, dry_run=args.dry_run, provider_override=args.provider)
     if args.dry_run:
-        print(f"配置有效，模型数量：{len(config.models)}")
-        for model in config.models:
-            print(f"- {model.alias}: {model.provider}/{model.model_name}")
+        _print_config_summary(config)
         return 0
     summary = Evaluator(config).run()
     report_path = default_report_output_path(summary.to_dict())
@@ -93,11 +94,14 @@ def _run(args: argparse.Namespace) -> int:
 
 
 def _assessment_run(args: argparse.Namespace) -> int:
-    config = load_config(use_dotenv=not args.no_dotenv, dry_run=args.dry_run, provider_override=args.provider)
+    config = load_config(
+        use_dotenv=not args.no_dotenv,
+        dry_run=args.dry_run,
+        provider_override=args.provider,
+        embedding_provider_override=args.embedding_provider,
+    )
     if args.dry_run:
-        print(f"配置有效，模型数量：{len(config.models)}")
-        for model in config.models:
-            print(f"- {model.alias}: {model.provider}/{model.model_name}")
+        _print_config_summary(config)
         return 0
     summary = AssessmentEvaluator(config).run()
     report_path = default_report_output_path(summary.to_dict())
@@ -212,6 +216,17 @@ def _select_models(models, alias: str | None):
             return [model]
     available = ", ".join(model.alias for model in models)
     raise ConfigError(f"找不到模型别名 {alias}，可用别名：{available}")
+
+
+def _print_config_summary(config) -> None:
+    print(f"配置有效，模型数量：{len(config.models)}")
+    for model in config.models:
+        print(f"- {model.alias}: {model.provider}/{model.model_name}")
+    if config.embedding is None:
+        print("- 参考答案语义评分：未启用")
+    else:
+        print(f"- 参考答案语义评分：{config.embedding.provider}/{config.embedding.model_name}")
+        print(f"- Embedding 缓存：{config.embedding.cache_path}")
 
 
 def _force_fake(config):

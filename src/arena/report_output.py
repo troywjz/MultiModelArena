@@ -1,3 +1,5 @@
+﻿# 生成报告输出文件路径。
+# 输入：运行摘要；输出：Markdown 文件路径。
 from __future__ import annotations
 
 import re

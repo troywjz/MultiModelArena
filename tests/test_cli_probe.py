@@ -1,3 +1,5 @@
+﻿# 检查模型探针 CLI 输出。
+# 输入：CLI 参数和 fake 模型；输出：pytest 断言结果。
 from arena.cli import _call_error_hint, _truncation_diagnostics, main
 from arena.models import ModelConfig
 

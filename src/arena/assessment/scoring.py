@@ -1,3 +1,5 @@
+﻿# 计算本地程序化评分。
+# 输入：结构化模型回答和任务定义；输出：领域分、规则分和角色分。
 from __future__ import annotations
 
 from collections import defaultdict
@@ -209,6 +211,15 @@ def _role_fit(dq_scores: dict[str, float], behavior: dict[str, float], diagnosti
                     min(1.0, behavior.get("risk_count", 0) / 12),
                     diagnostic_scores.get("risk_reversibility", 0.0) / 10,
                     diagnostic_scores.get("calibration_boundary", 0.0) / 10,
+                ]
+            )
+        if role == "结论整合专家":
+            base = _average(
+                [
+                    base,
+                    diagnostic_scores.get("tradeoff_reasoning", 0.0) / 10,
+                    diagnostic_scores.get("execution_specificity", 0.0) / 10,
+                    min(1.0, behavior.get("mutation_response_count", 0) / 4),
                 ]
             )
         role_scores[role] = _to_ten(base)

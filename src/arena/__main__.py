@@ -1,3 +1,5 @@
+﻿# 支持 python -m arena 启动。
+# 输入：命令行参数；输出：CLI 退出码。
 from __future__ import annotations
 
 import sys

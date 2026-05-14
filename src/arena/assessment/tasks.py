@@ -1,3 +1,5 @@
+﻿# 定义当前模型能力评测任务。
+# 输入：无；输出：任务和扰动列表。
 from __future__ import annotations
 
 from .models import AssessmentMutation, AssessmentTask

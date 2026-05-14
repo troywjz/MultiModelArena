@@ -1,3 +1,5 @@
+﻿# 生成旧版 Markdown 报告。
+# 输入：旧版运行摘要；输出：Markdown 报告文件。
 from __future__ import annotations
 
 import json

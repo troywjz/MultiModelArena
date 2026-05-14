@@ -1,3 +1,5 @@
+﻿# 检查当前评测编排和报告生成。
+# 输入：fake 模型和测试任务；输出：pytest 断言结果。
 import json
 from threading import Barrier, Lock
 import time
@@ -6,7 +8,8 @@ from arena.config import ArenaConfig
 from arena.assessment.evaluator import AssessmentEvaluator
 from arena.assessment.models import AssessmentTask
 from arena.assessment.report import generate_assessment_markdown_report
-from arena.models import ModelConfig, ProviderResponse
+from arena.assessment.tasks import DEFAULT_ASSESSMENT_TASKS
+from arena.models import EmbeddingConfig, ModelConfig, ProviderResponse
 
 
 def test_assessment_evaluator_runs_fake_provider(tmp_path):
@@ -26,6 +29,28 @@ def test_assessment_evaluator_runs_fake_provider(tmp_path):
     assert (summary.output_dir / "summary.sqlite3").exists()
     assert (tmp_path / "latest" / "summary.json").exists()
     assert all(result.total_score > 0 for result in summary.results)
+
+
+def test_assessment_evaluator_runs_fake_embedding_offline(tmp_path):
+    config = ArenaConfig(
+        models=[ModelConfig(alias="a", provider="fake", model_name="fake-a")],
+        output_root=tmp_path,
+        embedding=EmbeddingConfig(
+            provider="fake",
+            base_url="fake://embedding",
+            model_name="fake-embedding",
+            dimensions=16,
+            cache_path=tmp_path / "fake-embedding-cache.sqlite3",
+        ),
+    )
+
+    summary = AssessmentEvaluator(config, tasks=[DEFAULT_ASSESSMENT_TASKS[0]]).run()
+
+    assert len(summary.results) == 1
+    assert summary.results[0].semantic_scores
+    assert summary.results[0].semantic_role_fit
+    assert "fake-embedding" in " ".join(summary.results[0].semantic_notes)
+    assert (tmp_path / "fake-embedding-cache.sqlite3").exists()
 
 
 def test_assessment_evaluator_runs_different_endpoints_concurrently(tmp_path, monkeypatch):
@@ -163,7 +188,7 @@ def test_assessment_report_marks_all_parse_failures_invalid(tmp_path):
 
     assert "## 有效性提示" in markdown
     assert "没有任何可解析的 JSON 响应" in markdown
-    assert "本次总评分仅来自程序化规则" in markdown
+    assert "本次总评分仅来自本地程序化规则" in markdown
     assert "| 1 | bad-json-model | 离线模拟（fake） | 0.0 | 待定 |" in markdown
     assert "- 推荐角色：待定" in markdown
 
@@ -210,6 +235,57 @@ def test_assessment_report_infers_temperature_from_alias_for_old_summaries(tmp_p
 
     assert "MiniMax-M2.7（温度 0.8）" in markdown
     assert "- 温度（Temperature）：0.8" in markdown
+
+
+def test_assessment_report_preserves_semantic_scores(tmp_path):
+    data = {
+        "run_id": "semantic-run",
+        "created_at": "2026-05-14T00:00:00+00:00",
+        "output_dir": str(tmp_path),
+        "tasks": [
+            {
+                "id": "career_switch_001",
+                "domain": "事业与成长",
+                "title": "职业转型选择",
+                "prompt": "请给出结构化建议。",
+                "visible_constraints": ["收入"],
+                "hidden_values": {"income": 1.0},
+                "acceptable_options": ["渐进转型"],
+                "bad_options": ["裸辞"],
+                "scoring_points": [],
+                "mutations": [],
+            }
+        ],
+        "results": [
+            {
+                "alias": "semantic_model",
+                "model_name": "semantic-model",
+                "provider": "fake",
+                "responses": [{"task_id": "career_switch_001", "phase_id": "baseline", "parsed": _valid_assessment_response("semantic")}],
+                "domain_scores": {},
+                "quality_scores": {},
+                "behavior_fingerprint": {},
+                "role_fit": {"用户价值专家": 9.0},
+                "rule_scores": {},
+                "diagnostic_scores": {},
+                "semantic_scores": {"问题框架": 8.5},
+                "semantic_role_fit": {"用户价值专家": 9.0},
+                "semantic_notes": ["语义评分使用 netease-youdao/bce-embedding-base_v1。"],
+                "total_score": 8.0,
+                "evidence": [],
+                "failures": [],
+                "errors": [],
+            }
+        ],
+        "summary": "semantic-model: 总分 8.0/10",
+    }
+
+    report_path = generate_assessment_markdown_report(data, tmp_path / "report.md")
+    markdown = report_path.read_text(encoding="utf-8")
+
+    assert "#### 参考答案语义相似度" in markdown
+    assert "问题框架" in markdown
+    assert "语义评分使用 netease-youdao/bce-embedding-base_v1" in markdown
 
 
 def _single_phase_task() -> AssessmentTask:
