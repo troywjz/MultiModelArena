@@ -21,6 +21,11 @@ class ArenaConfig:
     dry_run: bool = False
 
 
+def _default_embedding_cache_path(provider: str) -> Path:
+    filename = "fake-embedding-cache.sqlite3" if provider == "fake" else "embedding-cache.sqlite3"
+    return Path(".arena-cache") / filename
+
+
 def _env_key(alias: str, field: str) -> str:
     normalized = alias.upper().replace("-", "_")
     return f"ARENA_MODEL_{normalized}_{field}"
@@ -208,7 +213,7 @@ def _load_embedding_config(output_root: Path, *, provider_override: str | None =
     timeout_seconds = _parse_global_float_env(_embedding_env_key("TIMEOUT_SECONDS"), 120)
     retry_count = _parse_global_int_env(_embedding_env_key("RETRY_COUNT"), 1) or 0
     disable_proxy = _parse_global_bool_env(_embedding_env_key("DISABLE_PROXY"), False)
-    cache_path = Path(os.environ.get(_embedding_env_key("CACHE_PATH"), str(output_root / "embedding-cache.sqlite3")))
+    cache_path = Path(os.environ.get(_embedding_env_key("CACHE_PATH"), str(_default_embedding_cache_path(provider))))
     similarity_floor = _parse_global_float_env(_embedding_env_key("SIMILARITY_FLOOR"), 0.55)
     similarity_ceiling = _parse_global_float_env(_embedding_env_key("SIMILARITY_CEILING"), 0.85)
     role_weight = _parse_global_float_env(_embedding_env_key("ROLE_WEIGHT"), 0.35)

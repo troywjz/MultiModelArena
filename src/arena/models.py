@@ -55,7 +55,7 @@ class EmbeddingConfig:
     timeout_seconds: float = 120.0
     retry_count: int = 1
     disable_proxy: bool = False
-    cache_path: Path = Path("runs/embedding-cache.sqlite3")
+    cache_path: Path = Path(".arena-cache/embedding-cache.sqlite3")
     similarity_floor: float = 0.55
     similarity_ceiling: float = 0.85
     role_weight: float = 0.35

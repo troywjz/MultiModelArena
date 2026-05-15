@@ -4,6 +4,7 @@ __pycache__/
 .venv/
 venv/
 .env
+.arena-cache/
 runs/
 report-output/
 build/

@@ -53,7 +53,7 @@ ARENA_MODEL_DEEPSEEK_CHAT_MODEL_NAME=deepseek-chat
 
 - JSONL 原始事件：请求摘要、响应、评分、错误、时间和 token 用量。
 - SQLite 汇总数据：运行、模型、任务、维度得分、角色建议和报告索引。
-- SQLite 向量缓存：启用 embedding 时，默认在 `runs/embedding-cache.sqlite3` 缓存参考答案和回答片段向量，避免重复调用。
+- SQLite 向量缓存：启用 embedding 时，默认在 `.arena-cache/embedding-cache.sqlite3` 缓存参考答案和回答片段向量，避免清空临时运行目录时丢失缓存并重复消耗调用成本。
 
 ### 报告层
 

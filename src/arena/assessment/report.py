@@ -68,6 +68,77 @@ SEMANTIC_SCORE_LABELS = {
     "专业边界": "专业边界",
 }
 
+QUALITY_SCORE_DESCRIPTIONS = {
+    "Helpful Frame": "满分 10；判断模型是否清楚框定问题、目标和决策边界。",
+    "Clear Values": "满分 10；判断模型是否识别用户价值、偏好和目标冲突。",
+    "Creative Alternatives": "满分 10；判断模型是否提出足够多样且可比较的备选方案。",
+    "Useful Information": "满分 10；判断模型是否利用题面约束、假设和信息缺口。",
+    "Sound Reasoning": "满分 10；判断模型是否有稳定的权衡、排序和理由链条。",
+    "Commitment to Follow Through": "满分 10；判断模型是否给出后续行动、复盘和执行承诺。",
+}
+
+RULE_SCORE_DESCRIPTIONS = {
+    "json_complete": "满分 10；13 个必填字段中非空字段越完整，得分越高。",
+    "alternative_count": "满分 10；备选方案达到 3 个得满分，不足按比例扣分。",
+    "bad_option_avoidance": "满分 10；没有命中题目定义的明显坏方案关键词得满分。",
+    "professional_boundary": "满分 10；高风险题必须给出专业边界，普通题需提示核实或个人判断边界。",
+    "action_plan": "满分 10；7 天行动、30 天行动和复盘条件都存在才得满分。",
+    "acceptable_option_match": "满分 10；推荐或排序命中题目允许的合理方案关键词得分。",
+    "mutation_response": "满分 10；扰动后能调整建议、命中预期方向并避开应规避方向。",
+}
+
+SEMANTIC_SCORE_DESCRIPTIONS = {
+    "问题框架": "满分 10；回答的问题定义与本地参考答案的问题框架越接近，得分越高。",
+    "价值识别": "满分 10；回答识别的用户价值与参考答案越接近，得分越高。",
+    "备选方案": "满分 10；回答提出的方案类型与参考答案越接近，得分越高。",
+    "推荐与排序": "满分 10；推荐方向和排序逻辑与参考答案越接近，得分越高。",
+    "风险与复盘": "满分 10；风险、可逆性和复盘条件与参考答案越接近，得分越高。",
+    "行动计划": "满分 10；7 天、30 天行动建议与参考答案越接近，得分越高。",
+    "专业边界": "满分 10；边界意识与参考答案越接近，得分越高。",
+}
+
+BEHAVIOR_DESCRIPTIONS = {
+    "clarifying_questions": "计数项；模型提出的澄清问题数量，不直接等同于分数。",
+    "alternative_count": "计数项；模型提出的备选方案数量，不直接等同于分数。",
+    "creative_option_count": "计数项；被识别为创造性或低后悔方案的数量，不直接等同于分数。",
+    "constraint_mentions": "计数项；模型命中题面显式约束的次数，不直接等同于分数。",
+    "risk_count": "计数项；模型列出的风险条目数量，不直接等同于分数。",
+    "action_count": "计数项；模型列出的行动条目数量，不直接等同于分数。",
+    "boundary_present_count": "计数项；模型给出专业边界或判断边界的次数，不直接等同于分数。",
+    "mutation_response_count": "计数项；扰动轮次中产生有效响应的次数，不直接等同于分数。",
+    "bad_option_hit_count": "计数项；命中明显坏方案关键词的次数，越少越好。",
+    "json_valid_count": "计数项；成功解析为 JSON 的响应条数，是报告有效性的基础。",
+}
+
+METHOD_FINGERPRINT_DESCRIPTIONS = {
+    "阶段门/试点验证": "满分 10；识别模型是否使用小步试点、阶段推进或验证思路。",
+    "权衡矩阵/优先级": "满分 10；识别模型是否比较成本、收益、取舍和优先级。",
+    "约束检查": "满分 10；识别模型是否反复锚定预算、时间、房贷等约束。",
+    "风险复盘": "满分 10；识别模型是否关注风险、预案、触发条件和止损。",
+    "相关方对齐": "满分 10；识别模型是否关注同行者、朋友、家人或合作方。",
+    "信息缺口管理": "满分 10；识别模型是否提出假设、澄清、证据和数据需求。",
+    "用户价值识别": "满分 10；识别模型是否关注目标、偏好、价值冲突和下行保护。",
+    "执行计划": "满分 10；识别模型是否给出具体行动、时间点、指标或安排。",
+}
+
+METHOD_COUNT_DESCRIPTIONS = {
+    key: "计数项；该分析角度关键词在全部成功解析回答中的命中次数，不直接等同于分数。"
+    for key in METHOD_FINGERPRINT_LABELS
+}
+
+COUNT_UNITS = {
+    "clarifying_questions": "个",
+    "alternative_count": "个",
+    "creative_option_count": "个",
+    "constraint_mentions": "次",
+    "risk_count": "条",
+    "action_count": "条",
+    "boundary_present_count": "次",
+    "mutation_response_count": "次",
+    "bad_option_hit_count": "次",
+    "json_valid_count": "条",
+}
+
 PROVIDER_LABELS = {
     "fake": "离线模拟（fake）",
     "openai_compatible": "OpenAI 兼容接口（openai_compatible）",
@@ -133,7 +204,7 @@ def _render(summary: dict[str, Any]) -> str:
             "",
             "## 总评分排名",
             "",
-            "| 排名 | 模型 | 供应商类型（Provider） | 总评分 | 建议角色 | 失败项 |",
+            "| 排名 | 模型 | 供应商类型（Provider） | 总评分（满分 10） | 建议角色 | 失败项 |",
             "|---:|---|---|---:|---|---|",
         ]
     )
@@ -147,11 +218,14 @@ def _render(summary: dict[str, Any]) -> str:
 
     lines.extend(["", "## 领域评分", ""])
     domains = sorted({task["domain"] for task in tasks})
-    lines.append("| 模型 | " + " | ".join(domains) + " |")
-    lines.append("|---" + "|---:" * len(domains) + "|")
+    lines.append("| 模型 | 名称 | 值 | 说明 |")
+    lines.append("|---|---|---:|---|")
     for result in results:
-        values = [str(result["domain_scores"].get(domain, 0)) for domain in domains]
-        lines.append(f"| {_cell(_display_model_name(result))} | " + " | ".join(values) + " |")
+        for domain in domains:
+            value = result["domain_scores"].get(domain, 0)
+            lines.append(
+                f"| {_cell(_display_model_name(result))} | {_cell(domain)} | {_format_score_value(value)} | 满分 10；该模型在此领域所有阶段的平均领域分，解析失败轮次按 0 计入。 |"
+            )
 
     lines.extend(["", "## 模型画像", ""])
     for result in results:
@@ -344,7 +418,7 @@ def _scoring_method_section() -> str:
             "| 过程质量 | 根据问题框架、价值、备选方案、信息、推理、执行六组结构化信号打分。 |",
             "| 响应拆解 | 根据具体约束、数字、利弊、风险、可逆性、行动细节、置信度和方法关键词打分。 |",
             "| 参考答案语义相似度 | 启用 embedding 时，把回答字段和多个参考答案字段向量化，取最高余弦相似度并映射为 0-10 分。 |",
-            "| 方法覆盖评分 | 先统计八类方法关键词命中次数，再按“命中次数 / 2”截断到 1，换算成 0-10 分；原始命中次数另表展示，不当作分数。 |",
+            "| 方法覆盖评分 | 先统计八类方法关键词命中次数，再按“命中次数 / (有效 JSON 响应数 × 2)”截断到 1，换算成 0-10 分；原始命中次数另表展示，不当作分数。 |",
         ]
     )
 
@@ -364,14 +438,23 @@ def _normalize_report_wording(text: str) -> str:
 
 
 def _validity_notice(results: list[dict[str, Any]]) -> str:
-    total, valid = _response_counts(results)
+    recorded, valid = _response_counts(results)
+    call_errors = _call_error_count(results)
+    total = recorded + call_errors
     if total == 0:
         return ""
     if valid == 0:
-        return "> 本次运行没有任何可解析的 JSON 响应，因此总评分、排名和角色建议不能作为模型能力结论，只能用于诊断模型输出协议或截断问题。"
+        return f"> 本次运行预期 {total} 条模型响应，但没有任何可解析的 JSON 响应，因此总评分、排名和角色建议不能作为模型能力结论，只能用于诊断模型输出协议、接口错误或超时问题。"
     if valid < total:
         failed = total - valid
-        return f"> 本次运行有 {failed}/{total} 条响应未能解析为 JSON。这些轮次已按 0 计入核心评分项；其余 {valid} 条成功解析响应继续参与细项评分，比较结论需要结合失败项谨慎解读。"
+        parse_failed = recorded - valid
+        details = []
+        if parse_failed:
+            details.append(f"{parse_failed} 条 JSON 解析失败")
+        if call_errors:
+            details.append(f"{call_errors} 条调用失败或超时")
+        detail_text = "，".join(details)
+        return f"> 本次运行有 {failed}/{total} 条响应不可完整评分，其中 {detail_text}。失败轮次已按 0 计入核心评分项；其余 {valid} 条成功解析响应继续参与细项评分，比较结论需要结合失败项谨慎解读。"
     return ""
 
 
@@ -385,6 +468,15 @@ def _response_counts(results: list[dict[str, Any]]) -> tuple[int, int]:
         total += len(responses)
         valid += sum(1 for response in responses if isinstance(response, dict) and response.get("parsed") is not None)
     return total, valid
+
+
+def _call_error_count(results: list[dict[str, Any]]) -> int:
+    total = 0
+    for result in results:
+        errors = result.get("errors", [])
+        if isinstance(errors, list):
+            total += len(errors)
+    return total
 
 
 def _has_valid_responses(result: dict[str, Any]) -> bool:
@@ -419,7 +511,7 @@ def _model_section(result: dict[str, Any]) -> list[str]:
         "",
         "#### 过程质量（Assessment Quality）",
         "",
-        _score_table(result.get("quality_scores", {}), QUALITY_SCORE_LABELS),
+        _score_table(result.get("quality_scores", {}), QUALITY_SCORE_LABELS, QUALITY_SCORE_DESCRIPTIONS),
         "",
         "#### 响应拆解评估",
         "",
@@ -427,7 +519,7 @@ def _model_section(result: dict[str, Any]) -> list[str]:
         "",
         "#### 参考答案语义相似度",
         "",
-        _score_table(result.get("semantic_scores", {}), SEMANTIC_SCORE_LABELS),
+        _score_table(result.get("semantic_scores", {}), SEMANTIC_SCORE_LABELS, SEMANTIC_SCORE_DESCRIPTIONS),
         "",
         "#### 语义评分说明",
         "",
@@ -435,11 +527,11 @@ def _model_section(result: dict[str, Any]) -> list[str]:
         "",
         "#### 方法与分析角度指纹",
         "",
-        _method_fingerprint_score_table(result.get("method_fingerprint", {})),
+        _method_fingerprint_score_table(result.get("method_fingerprint", {}), _valid_json_count(result)),
         "",
         "#### 方法关键词命中次数",
         "",
-        _score_table(result.get("method_fingerprint", {}), METHOD_FINGERPRINT_LABELS),
+        _score_table(result.get("method_fingerprint", {}), METHOD_FINGERPRINT_LABELS, METHOD_COUNT_DESCRIPTIONS, value_kind="count"),
         "",
         "#### 拆解证据",
         "",
@@ -447,11 +539,11 @@ def _model_section(result: dict[str, Any]) -> list[str]:
         "",
         "#### 程序化规则评分",
         "",
-        _score_table(result.get("rule_scores", {}), RULE_SCORE_LABELS),
+        _score_table(result.get("rule_scores", {}), RULE_SCORE_LABELS, RULE_SCORE_DESCRIPTIONS),
         "",
         "#### 行为指纹计数",
         "",
-        _score_table(result.get("behavior_fingerprint", {}), BEHAVIOR_LABELS),
+        _score_table(result.get("behavior_fingerprint", {}), BEHAVIOR_LABELS, BEHAVIOR_DESCRIPTIONS, value_kind="count"),
         "",
         "#### 证据摘录",
         "",
@@ -485,13 +577,21 @@ def _task_section(task: dict[str, Any]) -> list[str]:
     return lines
 
 
-def _score_table(scores: dict[str, Any], labels: dict[str, str] | None = None) -> str:
+def _score_table(
+    scores: dict[str, Any],
+    labels: dict[str, str] | None = None,
+    descriptions: dict[str, str] | None = None,
+    *,
+    value_kind: str = "score",
+) -> str:
     if not scores:
         return "无"
-    lines = ["| 项目 | 值 |", "|---|---:|"]
+    lines = ["| 名称 | 值 | 说明 |", "|---|---:|---|"]
     for name, value in scores.items():
-        display_name = labels.get(str(name), str(name)) if labels else str(name)
-        lines.append(f"| {_cell(display_name)} | {_cell(str(value))} |")
+        key = str(name)
+        display_name = labels.get(key, key) if labels else key
+        description = descriptions.get(key, _default_metric_description(value_kind)) if descriptions else _default_metric_description(value_kind)
+        lines.append(f"| {_cell(display_name)} | {_cell(_format_metric_value(key, value, value_kind))} | {_cell(description)} |")
     return "\n".join(lines)
 
 
@@ -500,32 +600,36 @@ def _diagnostic_table(scores: dict[str, Any]) -> str:
     # 分数来自 diagnostics.py 的结构化规则，不来自模型自评或模型裁判。
     if not scores:
         return "无"
-    lines = ["| 拆解项 | 值 | 说明 |", "|---|---:|---|"]
+    lines = ["| 名称 | 值 | 说明 |", "|---|---:|---|"]
     descriptions = {
-        "constraint_grounding": "是否抓住题面约束和具体数字。",
-        "value_decomposition": "是否拆出用户价值、偏好和目标张力。",
-        "tradeoff_reasoning": "是否通过利弊、排序或成本收益做权衡。",
-        "information_seeking": "是否识别假设、澄清问题和信息缺口。",
-        "risk_reversibility": "是否提出风险、可逆性和复盘条件。",
-        "execution_specificity": "行动是否具体到时间、指标或下一步。",
-        "adaptation_to_change": "扰动后是否调整建议并避开坏方案。",
-        "calibration_boundary": "是否给出置信度和专业边界。",
-        "method_diversity": "是否使用多种分析方法而非单一结论。",
+        "constraint_grounding": "满分 10；是否抓住题面约束和具体数字。",
+        "value_decomposition": "满分 10；是否拆出用户价值、偏好和目标张力。",
+        "tradeoff_reasoning": "满分 10；是否通过利弊、排序或成本收益做权衡。",
+        "information_seeking": "满分 10；是否识别假设、澄清问题和信息缺口。",
+        "risk_reversibility": "满分 10；是否提出风险、可逆性和复盘条件。",
+        "execution_specificity": "满分 10；行动是否具体到时间、指标或下一步。",
+        "adaptation_to_change": "满分 10；扰动后是否调整建议并避开坏方案。",
+        "calibration_boundary": "满分 10；是否给出置信度和专业边界。",
+        "method_diversity": "满分 10；是否使用多种分析方法而非单一结论。",
     }
     for key, value in scores.items():
         label = DIAGNOSTIC_DIMENSIONS.get(key, key)
-        lines.append(f"| {_cell(label)} | {_cell(str(value))} | {_cell(descriptions.get(key, ''))} |")
+        lines.append(f"| {_cell(label)} | {_format_score_value(value)} | {_cell(descriptions.get(key, ''))} |")
     return "\n".join(lines)
 
 
-def _method_fingerprint_score_table(counts: dict[str, Any]) -> str:
+def _method_fingerprint_score_table(counts: dict[str, Any], valid_response_count: int) -> str:
     if not counts:
         return "无"
-    lines = ["| 分析角度 | 覆盖评分 | 计算说明 |", "|---|---:|---|"]
+    target = max(1, valid_response_count * 2)
+    lines = ["| 名称 | 值 | 说明 |", "|---|---:|---|"]
     for name, value in counts.items():
         count = _safe_float(value)
-        score = _to_ten(min(1.0, count / 2))
-        lines.append(f"| {_cell(METHOD_FINGERPRINT_LABELS.get(str(name), str(name)))} | {score} | 命中 {count:g} 次；按 min(命中次数 / 2, 1) × 10 计算。 |")
+        score = _to_ten(min(1.0, count / target))
+        description = METHOD_FINGERPRINT_DESCRIPTIONS.get(str(name), "满分 10；该分析角度的关键词覆盖强度。")
+        lines.append(
+            f"| {_cell(METHOD_FINGERPRINT_LABELS.get(str(name), str(name)))} | {_format_score_value(score)} | {_cell(description)} 命中 {_format_count_number(count)} 次；按 min(命中次数 / (有效 JSON 响应数 {valid_response_count} × 2), 1) × 10 计算。 |"
+        )
     return "\n".join(lines)
 
 
@@ -571,6 +675,47 @@ def _average(values: list[float]) -> float:
 
 def _to_ten(value: float) -> float:
     return round(max(0.0, min(1.0, value)) * 10, 2)
+
+
+def _valid_json_count(result: dict[str, Any]) -> int:
+    behavior = result.get("behavior_fingerprint", {})
+    if isinstance(behavior, dict) and "json_valid_count" in behavior:
+        return max(0, int(round(_safe_float(behavior.get("json_valid_count")))))
+    responses = result.get("responses", [])
+    if not isinstance(responses, list):
+        return 0
+    return sum(1 for response in responses if isinstance(response, dict) and response.get("parsed") is not None)
+
+
+def _format_metric_value(key: str, value: Any, value_kind: str) -> str:
+    if value_kind == "count":
+        return _format_count_value(key, value)
+    return _format_score_value(value)
+
+
+def _format_score_value(value: Any) -> str:
+    return f"{_format_number(_safe_float(value))} / 10"
+
+
+def _format_count_value(key: str, value: Any) -> str:
+    unit = COUNT_UNITS.get(key, "次")
+    return f"{_format_count_number(_safe_float(value))} {unit}"
+
+
+def _format_count_number(value: float) -> str:
+    return _format_number(value)
+
+
+def _format_number(value: float) -> str:
+    if abs(value - round(value)) < 1e-9:
+        return str(int(round(value)))
+    return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
+def _default_metric_description(value_kind: str) -> str:
+    if value_kind == "count":
+        return "计数项；用于解释模型行为，不直接等同于分数。"
+    return "满分 10；数值越高表示该项表现越好。"
 
 
 def _safe_float(value: Any) -> float:
@@ -627,6 +772,8 @@ def _translate_parse_error(text: str) -> str:
         "Expecting property name enclosed in double quotes": "JSON 格式错误：对象字段名必须使用双引号",
         "Expecting ',' delimiter": "JSON 格式错误：缺少逗号或括号结构不完整",
         "Expecting value": "JSON 格式错误：缺少可解析的值",
+        "Extra data": "JSON 格式错误：有效 JSON 后还有额外内容",
+        "The read operation timed out": "读取响应超时",
     }
     translated = text
     for english, chinese in replacements.items():

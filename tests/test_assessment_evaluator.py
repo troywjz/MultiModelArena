@@ -134,8 +134,10 @@ def test_assessment_report_contains_programmatic_scoring(tmp_path):
     assert "# 模型能力评估报告" in markdown
     assert "过程质量（Assessment Quality）" in markdown
     assert "#### 响应拆解评估" in markdown
+    assert "| 名称 | 值 | 说明 |" in markdown
     assert "约束锚定" in markdown
     assert "#### 方法与分析角度指纹" in markdown
+    assert "有效 JSON 响应数" in markdown
     assert "#### 拆解证据" in markdown
     assert "fake-a（温度 0.2）" in markdown
     assert "- 温度（Temperature）：0.2" in markdown
@@ -285,6 +287,7 @@ def test_assessment_report_preserves_semantic_scores(tmp_path):
 
     assert "#### 参考答案语义相似度" in markdown
     assert "问题框架" in markdown
+    assert "8.5 / 10" in markdown
     assert "语义评分使用 netease-youdao/bce-embedding-base_v1" in markdown
 
 

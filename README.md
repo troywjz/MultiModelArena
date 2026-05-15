@@ -178,7 +178,7 @@ ARENA_EMBEDDING_BATCH_SIZE=16
 ARENA_EMBEDDING_TIMEOUT_SECONDS=120
 ARENA_EMBEDDING_RETRY_COUNT=1
 ARENA_EMBEDDING_DISABLE_PROXY=false
-ARENA_EMBEDDING_CACHE_PATH=runs/embedding-cache.sqlite3
+ARENA_EMBEDDING_CACHE_PATH=.arena-cache/embedding-cache.sqlite3
 ARENA_EMBEDDING_SIMILARITY_FLOOR=0.55
 ARENA_EMBEDDING_SIMILARITY_CEILING=0.85
 ARENA_EMBEDDING_ROLE_WEIGHT=0.35
@@ -219,7 +219,7 @@ SQLite 当前足够用于缓存向量，因为参考答案和回答片段数量�
 runs/<run_id>/events.jsonl
 runs/<run_id>/summary.json
 runs/<run_id>/summary.sqlite3
-runs/embedding-cache.sqlite3
+.arena-cache/embedding-cache.sqlite3
 report-output/model-arena-*.md
 ```
 
@@ -407,7 +407,7 @@ ARENA_EMBEDDING_BATCH_SIZE=16
 ARENA_EMBEDDING_TIMEOUT_SECONDS=120
 ARENA_EMBEDDING_RETRY_COUNT=1
 ARENA_EMBEDDING_DISABLE_PROXY=false
-ARENA_EMBEDDING_CACHE_PATH=runs/embedding-cache.sqlite3
+ARENA_EMBEDDING_CACHE_PATH=.arena-cache/embedding-cache.sqlite3
 ARENA_EMBEDDING_SIMILARITY_FLOOR=0.55
 ARENA_EMBEDDING_SIMILARITY_CEILING=0.85
 ARENA_EMBEDDING_ROLE_WEIGHT=0.35
@@ -448,7 +448,7 @@ SQLite is enough for the current vector cache because the number of reference an
 runs/<run_id>/events.jsonl
 runs/<run_id>/summary.json
 runs/<run_id>/summary.sqlite3
-runs/embedding-cache.sqlite3
+.arena-cache/embedding-cache.sqlite3
 report-output/model-arena-*.md
 ```
 

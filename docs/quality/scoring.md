@@ -110,7 +110,7 @@
 
 方法指纹分两类展示：
 
-- 方法覆盖评分：每个方法类型按 `min(关键词命中次数 / 2, 1) × 10` 计算，满分 10。
+- 方法覆盖评分：每个方法类型按 `min(关键词命中次数 / (有效 JSON 响应数 × 2), 1) × 10` 计算，满分 10。这样同一类关键词只在多轮回答里反复出现时才会接近满分，避免所有模型轻易得到 10 分。
 - 方法关键词命中次数：原始关键词命中次数，只表示证据强度，不是分数。
 
 ## 角色适配
@@ -175,7 +175,7 @@
 
 SQLite 适合当前缓存：参考答案数量小、主要目标是可追溯和避免重复调用时，把向量存为 BLOB 或 JSON 即可，余弦相似度在 Python 中计算。Chroma 更适合大题库、Top-K 相似检索、元数据过滤或更接近向量数据库工作流的场景。
 
-当前代码已经使用 SQLite 做缓存，默认路径是 `runs/embedding-cache.sqlite3`。Chroma 没有接入当前实现。
+当前代码已经使用 SQLite 做缓存，默认路径是 `.arena-cache/embedding-cache.sqlite3`。这个目录不属于临时运行产物，不会因为清空 `runs/` 或 `report-output/` 而丢失。Chroma 没有接入当前实现。
 
 ### Embedding 模型选择
 
@@ -246,7 +246,7 @@ ARENA_EMBEDDING_BATCH_SIZE=16
 ARENA_EMBEDDING_TIMEOUT_SECONDS=120
 ARENA_EMBEDDING_RETRY_COUNT=1
 ARENA_EMBEDDING_DISABLE_PROXY=false
-ARENA_EMBEDDING_CACHE_PATH=runs/embedding-cache.sqlite3
+ARENA_EMBEDDING_CACHE_PATH=.arena-cache/embedding-cache.sqlite3
 ARENA_EMBEDDING_SIMILARITY_FLOOR=0.55
 ARENA_EMBEDDING_SIMILARITY_CEILING=0.85
 ARENA_EMBEDDING_ROLE_WEIGHT=0.35

@@ -149,6 +149,30 @@ def test_load_config_reads_embedding_environment(monkeypatch, tmp_path):
     assert config.embedding.role_weight == 0.35
 
 
+def test_load_config_uses_durable_embedding_cache_path_by_default(monkeypatch):
+    monkeypatch.setenv("ARENA_MODELS", "fake")
+    monkeypatch.setenv("ARENA_MODEL_FAKE_PROVIDER", "fake")
+    monkeypatch.setenv("ARENA_EMBEDDING_ENABLED", "true")
+    monkeypatch.setenv("ARENA_EMBEDDING_API_KEY", "sk-embedding")
+    monkeypatch.delenv("ARENA_EMBEDDING_CACHE_PATH", raising=False)
+
+    config = load_config(use_dotenv=False)
+
+    assert config.embedding is not None
+    assert config.embedding.cache_path.as_posix() == ".arena-cache/embedding-cache.sqlite3"
+
+
+def test_load_config_fake_embedding_uses_separate_cache_path_by_default(monkeypatch):
+    monkeypatch.setenv("ARENA_MODELS", "fake")
+    monkeypatch.setenv("ARENA_MODEL_FAKE_PROVIDER", "fake")
+    monkeypatch.delenv("ARENA_EMBEDDING_CACHE_PATH", raising=False)
+
+    config = load_config(use_dotenv=False, embedding_provider_override="fake")
+
+    assert config.embedding is not None
+    assert config.embedding.cache_path.as_posix() == ".arena-cache/fake-embedding-cache.sqlite3"
+
+
 def test_load_config_embedding_provider_override_enables_fake_embedding(monkeypatch, tmp_path):
     monkeypatch.setenv("ARENA_MODELS", "deepseek")
     monkeypatch.setenv("ARENA_MODEL_DEEPSEEK_PROVIDER", "openai_compatible")
