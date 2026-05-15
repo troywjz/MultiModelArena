@@ -11,7 +11,14 @@ from typing import Any
 from arena.security import redact_text
 
 from .diagnostics import DIAGNOSTIC_DIMENSIONS, analyze_response
-from .models import AssessmentModelResult, AssessmentMutation, AssessmentPhaseResponse, AssessmentTask, format_model_display_name
+from .models import (
+    ROLE_DEFINITIONS,
+    AssessmentModelResult,
+    AssessmentMutation,
+    AssessmentPhaseResponse,
+    AssessmentTask,
+    format_model_display_name,
+)
 from .scoring import score_assessment_result
 
 
@@ -199,6 +206,7 @@ def _render(summary: dict[str, Any]) -> str:
     if validity_notice:
         lines.extend(["", "## 有效性提示", "", validity_notice])
     lines.extend(["", "## 评分方法说明", "", _scoring_method_section()])
+    lines.extend(["", "## 专家角色定义与覆盖", "", _role_definition_section(results)])
     lines.extend(
         [
             "",
@@ -427,6 +435,62 @@ def _scoring_notice(results: list[dict[str, Any]]) -> str:
     if _has_semantic_scores(results):
         return "> 本报告总评分来自本地程序化规则和参考答案语义相似度，不包含模型裁判评分。个人生活、事业与成长、人际与关系、资源与风险是评测领域，不代表当前项目替用户做真实决策。"
     return "> 本报告总评分仅来自本地程序化规则，不包含模型裁判评分。个人生活、事业与成长、人际与关系、资源与风险是评测领域，不代表当前项目替用户做真实决策。"
+
+
+def _role_definition_section(results: list[dict[str, Any]]) -> str:
+    # 角色覆盖不是另一套模型裁判，而是把 role_fit 分数映射到下游会议中的专家分工。
+    # 如果某个角色没有进入任何模型前三，说明当前题组下证据不足，不建议把该角色交给现有模型主责。
+    coverage = _role_coverage(results)
+    uncovered = [role for role in ROLE_DEFINITIONS if coverage[role]["top3"] == 0]
+    lines = [
+        "这些专家角色用于后续民主集中制会议中的模型分工。推荐角色来自每个模型的角色适配分，不是人工指定标签。",
+    ]
+    if uncovered:
+        lines.append(f"本次没有进入任何模型推荐前三的角色：{'、'.join(uncovered)}。这些角色当前不建议由本次参评模型主责。")
+    else:
+        lines.append("本次所有专家角色都至少进入过某个模型的推荐前三。")
+    lines.extend(
+        [
+            "",
+            "| 专家角色 | 定义 | 进入前二次数 | 进入前三次数 | 最高适配分（满分 10） | 本次结论 |",
+            "|---|---|---:|---:|---:|---|",
+        ]
+    )
+    for role, definition in ROLE_DEFINITIONS.items():
+        item = coverage[role]
+        lines.append(
+            f"| {_cell(role)} | {_cell(definition)} | {item['top2']} 次 | {item['top3']} 次 | {_format_score_value(item['max_score'])} | {_cell(_role_coverage_verdict(item))} |"
+        )
+    return "\n".join(lines)
+
+
+def _role_coverage(results: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    coverage = {role: {"top2": 0, "top3": 0, "max_score": 0.0} for role in ROLE_DEFINITIONS}
+    for result in results:
+        if not _has_valid_responses(result):
+            continue
+        role_fit = result.get("role_fit", {})
+        if not isinstance(role_fit, dict):
+            continue
+        items = _top_items({str(role): _safe_float(score) for role, score in role_fit.items()}, len(role_fit))
+        for role, score in items:
+            if role in coverage:
+                coverage[role]["max_score"] = max(coverage[role]["max_score"], score)
+        for role, _score in items[:2]:
+            if role in coverage:
+                coverage[role]["top2"] += 1
+        for role, _score in items[:3]:
+            if role in coverage:
+                coverage[role]["top3"] += 1
+    return coverage
+
+
+def _role_coverage_verdict(item: dict[str, Any]) -> str:
+    if item["top2"] > 0:
+        return "有模型可优先尝试。"
+    if item["top3"] > 0:
+        return "可作为备选角色，暂不建议主责。"
+    return "本次没有明确适配模型。"
 
 
 def _has_semantic_scores(results: list[dict[str, Any]]) -> bool:

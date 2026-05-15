@@ -151,16 +151,28 @@ class EmbeddingCache:
                 )
                 """
             )
+            self._migrate_blank_dimensions(conn)
 
     def _read_vector(self, text_hash: str) -> list[float] | None:
+        configured_dimensions = _configured_dimensions_key(self.config)
         with sqlite3.connect(self.path) as conn:
-            row = conn.execute(
-                """
-                select vector_json from embedding_cache
-                where provider = ? and base_url = ? and model_name = ? and dimensions = ? and encoding_format = ? and text_hash = ?
-                """,
-                (*self._cache_scope(), text_hash),
-            ).fetchone()
+            if configured_dimensions is None:
+                row = conn.execute(
+                    """
+                    select vector_json from embedding_cache
+                    where provider = ? and base_url = ? and model_name = ? and encoding_format = ? and text_hash = ?
+                    order by created_at desc
+                    """,
+                    (self.config.provider, self.config.base_url, self.config.model_name, self.config.encoding_format, text_hash),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """
+                    select vector_json from embedding_cache
+                    where provider = ? and base_url = ? and model_name = ? and dimensions = ? and encoding_format = ? and text_hash = ?
+                    """,
+                    (*self._cache_scope(configured_dimensions), text_hash),
+                ).fetchone()
         if row is None:
             return None
         return [float(value) for value in json.loads(row[0])]
@@ -174,7 +186,7 @@ class EmbeddingCache:
                 ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    *self._cache_scope(),
+                    *self._cache_scope(_vector_dimensions_key(vector, self.config)),
                     text_hash,
                     text,
                     json.dumps(vector),
@@ -182,8 +194,7 @@ class EmbeddingCache:
                 ),
             )
 
-    def _cache_scope(self) -> tuple[str, str, str, str, str]:
-        dimensions = "" if self.config.dimensions is None else str(self.config.dimensions)
+    def _cache_scope(self, dimensions: str) -> tuple[str, str, str, str, str]:
         return (
             self.config.provider,
             self.config.base_url,
@@ -192,6 +203,36 @@ class EmbeddingCache:
             self.config.encoding_format,
         )
 
+    def _migrate_blank_dimensions(self, conn: sqlite3.Connection) -> None:
+        rows = conn.execute(
+            """
+            select provider, base_url, model_name, encoding_format, text_hash, text, vector_json, created_at
+            from embedding_cache
+            where dimensions = ''
+            """
+        ).fetchall()
+        for provider, base_url, model_name, encoding_format, text_hash, text, vector_json, created_at in rows:
+            try:
+                vector = [float(value) for value in json.loads(vector_json)]
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            dimensions = str(len(vector))
+            conn.execute(
+                """
+                insert or replace into embedding_cache (
+                    provider, base_url, model_name, dimensions, encoding_format, text_hash, text, vector_json, created_at
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (provider, base_url, model_name, dimensions, encoding_format, text_hash, text, vector_json, created_at),
+            )
+            conn.execute(
+                """
+                delete from embedding_cache
+                where provider = ? and base_url = ? and model_name = ? and dimensions = '' and encoding_format = ? and text_hash = ?
+                """,
+                (provider, base_url, model_name, encoding_format, text_hash),
+            )
+
 
 def _normalize_text(text: str) -> str:
     return str(text).strip()
@@ -199,6 +240,19 @@ def _normalize_text(text: str) -> str:
 
 def _hash_text(text: str) -> str:
     return sha256(text.encode("utf-8")).hexdigest()
+
+
+def _configured_dimensions_key(config: EmbeddingConfig) -> str | None:
+    if config.dimensions is None:
+        return None
+    return str(config.dimensions)
+
+
+def _vector_dimensions_key(vector: list[float], config: EmbeddingConfig) -> str:
+    dimensions = len(vector)
+    if config.dimensions is not None and dimensions != config.dimensions:
+        raise RuntimeError(f"Embedding 返回维度 {dimensions} 与配置维度 {config.dimensions} 不一致")
+    return str(dimensions)
 
 
 def _fake_embedding(text: str, dimensions: int) -> list[float]:

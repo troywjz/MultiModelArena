@@ -177,6 +177,8 @@ SQLite 适合当前缓存：参考答案数量小、主要目标是可追溯和�
 
 当前代码已经使用 SQLite 做缓存，默认路径是 `.arena-cache/embedding-cache.sqlite3`。这个目录不属于临时运行产物，不会因为清空 `runs/` 或 `report-output/` 而丢失。Chroma 没有接入当前实现。
 
+缓存表里的 `dimensions` 字段记录实际返回的向量维度。`ARENA_EMBEDDING_DIMENSIONS=None` 只表示请求时不传 `dimensions` 参数；如果服务默认返回 768 维，缓存中会写入 `768`。旧版本写入的空维度会在打开缓存时按 `vector_json` 的长度自动迁移。
+
 ### Embedding 模型选择
 
 不需要一定使用 BERT。这里需要的是 embedding 模型，模型底座可以是 BERT、Qwen、BGE 或其他架构。

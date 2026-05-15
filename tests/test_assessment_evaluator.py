@@ -291,6 +291,41 @@ def test_assessment_report_preserves_semantic_scores(tmp_path):
     assert "语义评分使用 netease-youdao/bce-embedding-base_v1" in markdown
 
 
+def test_assessment_report_includes_role_definitions_and_coverage(tmp_path):
+    data = {
+        "run_id": "role-coverage-run",
+        "created_at": "2026-05-15T00:00:00+00:00",
+        "output_dir": str(tmp_path),
+        "tasks": [],
+        "results": [
+            {
+                "alias": "planner",
+                "model_name": "planner-model",
+                "provider": "fake",
+                "responses": "legacy-summary-without-response-list",
+                "domain_scores": {},
+                "quality_scores": {},
+                "behavior_fingerprint": {},
+                "role_fit": {"执行规划专家": 9.0, "风险专家": 7.0, "用户价值专家": 4.0},
+                "rule_scores": {},
+                "total_score": 8.0,
+                "evidence": [],
+                "failures": [],
+                "errors": [],
+            }
+        ],
+        "summary": "planner-model: 总分 8.0/10",
+    }
+
+    report_path = generate_assessment_markdown_report(data, tmp_path / "report.md")
+    markdown = report_path.read_text(encoding="utf-8")
+
+    assert "## 专家角色定义与覆盖" in markdown
+    assert "执行规划专家" in markdown
+    assert "负责把结论转成 7 天、30 天和复盘节点的行动计划" in markdown
+    assert "本次没有进入任何模型推荐前三的角色" in markdown
+
+
 def _single_phase_task() -> AssessmentTask:
     return AssessmentTask(
         id="task_1",

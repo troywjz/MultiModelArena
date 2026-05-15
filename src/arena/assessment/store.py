@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import sqlite3
+import sys
 from threading import Lock
 import time
 from pathlib import Path
@@ -24,6 +25,7 @@ class AssessmentRunStore:
         self.summary_path = self.output_dir / "summary.json"
         self.db_path = self.output_dir / "summary.sqlite3"
         self._event_lock = Lock()
+        self._pending_event_lines: list[str] = []
         self._init_db()
 
     def _init_db(self) -> None:
@@ -62,32 +64,63 @@ class AssessmentRunStore:
         safe = json.loads(redact_text(json.dumps(event, ensure_ascii=False), self.known_secrets))
         # 不同请求入口会并发写事件文件；加锁保证 JSONL 不会交错写入半行。
         with self._event_lock:
-            self._append_event_line(json.dumps(safe, ensure_ascii=False) + "\n")
+            line = json.dumps(safe, ensure_ascii=False) + "\n"
+            try:
+                self._append_event_line(line)
+            except PermissionError as exc:
+                # 事件日志是审计材料，不能因为 Windows 文件短暂占用而把模型成功响应误判为模型失败。
+                # 先放入内存队列，写 summary 前再补写；如果仍失败，只影响 events.jsonl 完整度。
+                self._pending_event_lines.append(line)
+                print(f"警告：事件日志暂时无法写入，已延后重试：{exc}", file=sys.stderr)
 
     def _append_event_line(self, line: str) -> None:
         # Windows 上偶发的杀毒/索引扫描可能短暂占用文件；这里重试避免丢掉整次评估。
-        for attempt in range(5):
+        for attempt in range(20):
             try:
                 with self.events_path.open("a", encoding="utf-8") as file:
                     file.write(line)
                 return
             except PermissionError:
-                if attempt == 4:
+                if attempt == 19:
                     raise
-                time.sleep(0.2 * (attempt + 1))
+                time.sleep(min(0.5 * (attempt + 1), 3.0))
 
     def write_summary(self, summary: AssessmentRunSummary) -> None:
+        self._flush_pending_events()
         data = summary.to_dict()
         safe_data = json.loads(redact_text(json.dumps(data, ensure_ascii=False), self.known_secrets))
         self.summary_path.write_text(json.dumps(safe_data, ensure_ascii=False, indent=2), encoding="utf-8")
         self._write_sqlite(summary)
+        self._update_latest()
+
+    def _flush_pending_events(self) -> None:
+        if not self._pending_event_lines:
+            return
+        remaining: list[str] = []
+        for line in self._pending_event_lines:
+            try:
+                self._append_event_line(line)
+            except PermissionError as exc:
+                remaining.append(line)
+                print(f"警告：事件日志补写失败，本次 summary 仍会继续生成：{exc}", file=sys.stderr)
+        self._pending_event_lines = remaining
+
+    def _update_latest(self) -> None:
         latest = self.output_dir.parent / "latest"
-        if latest.exists() or latest.is_symlink():
-            if latest.is_dir() and not latest.is_symlink():
-                shutil.rmtree(latest)
-            else:
-                latest.unlink()
-        shutil.copytree(self.output_dir, latest)
+        for attempt in range(5):
+            try:
+                if latest.exists() or latest.is_symlink():
+                    if latest.is_dir() and not latest.is_symlink():
+                        shutil.rmtree(latest)
+                    else:
+                        latest.unlink()
+                shutil.copytree(self.output_dir, latest)
+                return
+            except PermissionError as exc:
+                if attempt == 4:
+                    print(f"警告：runs/latest 更新失败，请直接使用运行目录 {self.output_dir}：{exc}", file=sys.stderr)
+                    return
+                time.sleep(min(0.5 * (attempt + 1), 3.0))
 
     def _write_sqlite(self, summary: AssessmentRunSummary) -> None:
         with sqlite3.connect(self.db_path) as conn:

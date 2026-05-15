@@ -91,6 +91,8 @@ embedding 会把一句话变成一串数字。例如：
 - `ARENA_EMBEDDING_DIMENSIONS=None`：请求里不传维度，使用模型默认值。
 - `ARENA_EMBEDDING_DIMENSIONS=512`：请求里传 `dimensions=512`，要求服务返回 512 个数字。
 
+缓存数据库里的 `dimensions` 记录实际返回的向量长度。也就是说，即使配置为 `None`，如果服务默认返回 768 维，缓存里也会写入 `768`，而不是空值。
+
 当前缓存保存的是所有向量化过的文本片段，不只是参考答案。包括参考答案字段、模型回答字段，以及以后重复出现的相同文本。缓存键包含 provider、base_url、embedding 模型、维度、返回格式和文本 hash。
 
 余弦相似度计算的是两个向量方向是否接近：
@@ -319,6 +321,8 @@ If the model returns 768 dimensions, the output contains 768 numbers. These numb
 
 - `ARENA_EMBEDDING_DIMENSIONS=None`: do not send a dimensions parameter; use the model default.
 - `ARENA_EMBEDDING_DIMENSIONS=512`: send `dimensions=512`; ask the service to return 512 numbers.
+
+The cache database stores the actual returned vector length in `dimensions`. For example, if the setting is `None` and the service default returns 768 dimensions, the cache stores `768`, not an empty value.
 
 The current cache stores every text segment that has been embedded, not just reference answers. That includes reference-answer fields, model-response fields, and any identical text that appears again later. The cache key includes provider, base URL, embedding model, dimensions, return format, and text hash.
 

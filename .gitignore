@@ -6,7 +6,7 @@ venv/
 .env
 .arena-cache/
 runs/
-report-output/
+/report-output/
 build/
 dist/
 *.egg-info/
