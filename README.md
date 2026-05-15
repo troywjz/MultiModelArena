@@ -1,6 +1,6 @@
 # MultiModelArena
 
-MultiModelArena 是一个本地多模型评测工具。它读取 `.env` 里的模型配置，让多个模型回答同一组结构化决策题，再生成一份 Markdown 报告，说明每个模型的分数、失败项、行为特征和适合承担的会议角色。
+MultiModelArena 在本地评测多个大模型处理结构化决策题的表现。它读取 `.env` 配置并批量调用模型，保存原始记录，生成包含评分、失败项、响应拆解、语义相似度和专家角色建议的 Markdown 报告；亮点是不依赖模型裁判，支持 OpenAI/Anthropic 兼容接口、按请求入口并发调度、扰动题测试、embedding 参考答案评分和下游会议角色分配。
 
 当前主流程评估的是“模型 + 参数 + 调用方式”的组合，不是模型的绝对人格。评分不使用模型裁判；默认使用本地规则，开启 embedding 后会额外使用参考答案语义相似度。
 
@@ -231,7 +231,7 @@ report-output/model-arena-*.md
 
 ## English Version
 
-MultiModelArena is a local multi-model evaluation tool. It reads model configuration from `.env`, asks multiple models to answer the same structured decision tasks, and generates a Markdown report showing each model's score, failures, behavior profile, and suitable meeting roles.
+MultiModelArena locally evaluates how multiple LLMs handle structured decision tasks. It reads model configuration from `.env`, calls enabled models in batches, stores raw run records, and generates a Markdown report with scores, failures, response diagnostics, semantic similarity, and expert-role recommendations. Its main strengths are judge-free local scoring, OpenAI/Anthropic-compatible providers, base-url-aware concurrency, mutation tests, embedding-based reference comparison, and downstream meeting-role assignment.
 
 The current main flow evaluates the combination of model, parameters, and calling method. It does not claim to measure a model's absolute personality. Scoring does not use a model judge. By default, it uses local rules; when embedding is enabled, it also uses reference-answer semantic similarity.
 
